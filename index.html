@@ -5,158 +5,278 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>SeaStrike</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      padding: 16px;
-      background: #f5f5f5;
-      color: #333;
-    }
+    body { font-family: sans-serif; padding: 12px; background: #e3f2fd; }
     .container { max-width: 500px; margin: 0 auto; }
-    .status { 
-      text-align: center; 
-      margin-bottom: 16px; 
-      font-weight: bold; 
-      color: #1976d2;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(10, 1fr);
-      gap: 2px;
-      margin-bottom: 16px;
-    }
-    .cell {
-      aspect-ratio: 1;
-      background: #bbdefb;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      user-select: none;
-    }
+    .screen { display: none; }
+    #screen-menu { display: block; }
+    .btn { display: block; width: 100%; padding: 14px; margin: 8px 0; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+    .btn-primary { background: #1976d2; color: white; }
+    .btn-success { background: #388e3c; color: white; }
+    .status { text-align: center; margin: 16px 0; font-weight: bold; }
+    .field-container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .field-title { text-align: center; margin-bottom: 8px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 1px; background: #42a5f5; border-radius: 4px; }
+    .cell { aspect-ratio: 1; background: #bbdefb; }
+    .cell.ship { background: #2196f3; }
     .cell.hit { background: #f44336; }
-    .cell.miss { background: #e0e0e0; }
-    .btn {
-      display: block;
-      width: 100%;
-      padding: 12px;
-      background: #1976d2;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-    .btn:disabled {
-      background: #90caf9;
-      cursor: not-allowed;
-    }
-    .avatar {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: #ccc;
-      border: 2px solid #gold;
-      overflow: hidden;
-    }
-    .avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .cell.miss { background: #eceff1; }
+    .cell.enemy-hit { background: #ff5252; }
+    .cell.enemy-miss { background: #cfd8dc; }
+    .ships-panel { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; justify-content: center; }
+    .ship-template { display: flex; background: #2196f3; border-radius: 4px; padding: 2px 4px; color: white; font-size: 14px; user-select: none; cursor: grab; }
+    .ship-template.h { flex-direction: row; }
+    .ship-template.v { flex-direction: column; width: 24px; }
+    .ship-template div { width: 20px; height: 20px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div id="status" class="status">Загрузка...</div>
-    <div class="grid" id="board"></div>
-    <button id="attackBtn" class="btn" disabled>Атаковать (дождитесь матча)</button>
+    <div id="screen-menu" class="screen">
+      <div class="status">SeaStrike</div>
+      <button class="btn btn-primary" onclick="startMatch()">▶ Начать матч</button>
+    </div>
+
+    <div id="screen-placement" class="screen">
+      <div class="status">Расставьте корабли</div>
+      <div class="ships-panel" id="shipsPanel"></div>
+      <div class="field-title">Ваше поле</div>
+      <div class="grid" id="myField"></div>
+      <button class="btn btn-success" id="readyBtn" onclick="submitPlacement()" disabled>✅ Готово</button>
+    </div>
+
+    <div id="screen-waiting" class="screen">
+      <div class="status">🕗 Ожидание соперника…</div>
+    </div>
+
+    <div id="screen-match" class="screen">
+      <div class="status" id="matchStatus">🎯 Ход соперника</div>
+      <div class="field-container">
+        <div><div class="field-title">Противник</div><div class="grid" id="enemyField"></div></div>
+        <div><div class="field-title">Ваши корабли</div><div class="grid" id="myFieldBattle"></div></div>
+      </div>
+    </div>
   </div>
 
   <script>
-    // Проверка: запущено ли в Telegram
-    if (!window.Telegram?.WebApp) {
-      document.body.innerHTML = '<h2>❌ Откройте игру через Telegram!</h2>';
-      throw new Error("Not in Telegram WebApp");
-    }
-
+    if (!window.Telegram?.WebApp) { alert("Откройте в Telegram!"); throw new Error(); }
     const WebApp = Telegram.WebApp;
     WebApp.expand();
     WebApp.setHeaderColor('#1976d2');
-    WebApp.setBackgroundColor('#f5f5f5');
+    const user = WebApp.initDataUnsafe?.user;
+    if (!user) WebApp.close();
+    const userId = parseInt(user.id);
 
-    // === ДАННЫЕ ПОЛЬЗОВАТЕЛЯ ===
-    const initData = WebApp.initDataUnsafe;
-    const user = initData?.user;
-    if (!user) {
-      WebApp.showAlert("Ошибка: нет данных пользователя");
-      WebApp.close();
-    }
+    // === ЗАМЕНИТЕ ЭТИ ССЫЛКИ НА СВОИ! ===
+    const BACKEND_URL = "https://seastrike-backend.daniltelekom.repl.co";
+    const SUPABASE_URL = "https://ваш-проект.supabase.co";
+    const SUPABASE_KEY = "ваш_anon_key";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const userId = user.id;
-    const username = user.username || user.first_name || "Игрок";
-    const photoUrl = user.photo_url || null;
+    let currentMatchId = null, myShips = [], matchData = null, realtimeSub = null;
 
-    // === URL БЭКА ===
-    const BACKEND_URL = " https://indigocomposedaddin.daniltelekom.repl.co"; // ← ЗАМЕНИТЕ НА СВОЙ!
-
-    // === АВАТАРКА В УГЛУ ===
-    if (photoUrl) {
-      const avatar = document.createElement('div');
-      avatar.className = 'avatar';
-      avatar.innerHTML = `<img src="${photoUrl}" alt="avatar">`;
-      document.body.appendChild(avatar);
-    }
-
-    // === РЕГИСТРАЦИЯ В БД ===
+    // Init
     fetch(`${BACKEND_URL}/player`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        telegram_id: userId,
-        username: username
-      })
-    })
-    .then(r => r.json())
-    .then(player => {
-      document.getElementById('status').innerText = 
-        `🎮 ${username} | Рейтинг: ${player.rating}`;
-    })
-    .catch(err => {
-      console.error(err);
-      document.getElementById('status').innerText = "❌ Ошибка подключения";
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({telegram_id: userId, username: user.username || user.first_name})
     });
 
-    // === СОЗДАЁМ ПОЛЕ 10×10 ===
-    const board = document.getElementById('board');
-    for (let i = 0; i < 100; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      cell.dataset.idx = i;
-      cell.innerText = i < 10 ? '0' + i : i;
-      cell.onclick = () => {
-        if (!cell.classList.contains('hit') && !cell.classList.contains('miss')) {
-          cell.style.backgroundColor = '#ffeb3b';
-          // Здесь позже — отправка атаки на сервер
-        }
-      };
-      board.appendChild(cell);
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.style.display = 'none');
+      document.getElementById(id).style.display = 'block';
     }
 
-    // === КНОПКА АТАКИ (временно) ===
-    const btn = document.getElementById('attackBtn');
-    btn.onclick = () => {
-      WebApp.showAlert("Атака отправлена! (пока заглушка)");
-    };
+    function startMatch() {
+      currentMatchId = "demo-" + Date.now();
+      showScreen('screen-placement');
+      initPlacement();
+    }
 
-    // Готово!
-    console.log("SeaStrike Mini App загружено");
+    function initPlacement() {
+      const panel = document.getElementById('shipsPanel');
+      panel.innerHTML = '';
+      const cfg = [{s:4,c:1},{s:3,c:2},{s:2,c:3},{s:1,c:4}];
+      cfg.forEach(({s,c}) => {
+        for (let i=0; i<c; i++) {
+          const div = document.createElement('div');
+          div.className = `ship-template h`;
+          div.dataset.size = s;
+          div.dataset.dir = 'h';
+          for (let j=0; j<s; j++) div.appendChild(document.createElement('div'));
+          div.draggable = true;
+          panel.appendChild(div);
+        }
+      });
+
+      const field = document.getElementById('myField');
+      field.innerHTML = '';
+      for (let y=0; y<10; y++) for (let x=0; x<10; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.x = x; cell.dataset.y = y;
+        field.appendChild(cell);
+      }
+      setupDragAndDrop();
+    }
+
+    function setupDragAndDrop() {
+      document.querySelectorAll('.ship-template').forEach(ship => {
+        ship.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('ship', JSON.stringify({
+            size: parseInt(ship.dataset.size),
+            dir: ship.dataset.dir
+          }));
+          ship.style.opacity = '0.5';
+        });
+        ship.addEventListener('dragend', e => ship.style.opacity = '1');
+      });
+
+      document.querySelectorAll('#myField .cell').forEach(cell => {
+        cell.addEventListener('dragover', e => { e.preventDefault(); cell.style.background = '#90caf9'; });
+        cell.addEventListener('dragleave', e => cell.style.background = '#bbdefb'; });
+        cell.addEventListener('drop', e => {
+          e.preventDefault();
+          const data = JSON.parse(e.dataTransfer.getData('ship'));
+          const x = parseInt(cell.dataset.x), y = parseInt(cell.dataset.y);
+          placeShip(x, y, data.size, data.dir);
+          cell.style.background = '#bbdefb';
+        });
+      });
+    }
+
+    function placeShip(x, y, size, dir) {
+      if ((dir === 'h' && x + size > 10) || (dir === 'v' && y + size > 10)) return;
+      myShips.push({x, y, size, dir});
+      renderMyField();
+      const shipEl = document.querySelector(`.ship-template[data-size="${size}"][data-dir="${dir}"]`);
+      if (shipEl) shipEl.remove();
+      if (myShips.reduce((s, sh) => s + sh.size, 0) === 20) {
+        document.getElementById('readyBtn').disabled = false;
+      }
+    }
+
+    function renderMyField() {
+      document.querySelectorAll('#myField .cell').forEach(c => { c.className = 'cell'; });
+      const grid = Array(10).fill().map(() => Array(10).fill(0));
+      myShips.forEach(s => {
+        for (let i = 0; i < s.size; i++) {
+          const x = s.x + (s.dir === 'h' ? i : 0);
+          const y = s.y + (s.dir === 'v' ? i : 0);
+          if (x < 10 && y < 10) {
+            grid[y][x] = (grid[y][x] || 0) + 1;
+            const idx = y * 10 + x;
+            const cell = document.querySelectorAll('#myField .cell')[idx];
+            if (cell) cell.classList.add('ship');
+          }
+        }
+      });
+    }
+
+    function submitPlacement() {
+      fetch(`${BACKEND_URL}/match/${currentMatchId}/place-ships`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({telegram_id: userId, ships: myShips})
+      }).then(() => {
+        showScreen('screen-waiting');
+        setTimeout(() => {
+          matchData = {
+            id: currentMatchId,
+            player1_id: userId,
+            player2_id: 999999,
+            turn_id: userId,
+            board_p1: shipsToBoard(myShips),
+            board_p2: shipsToBoard([  // демо-корабли противника
+              {x:0,y:0,size:4,dir:'h'},{x:0,y:2,size:3,dir:'h'},{x:0,y:4,size:3,dir:'h'},
+              {x:0,y:6,size:2,dir:'h'},{x:3,y:6,size:2,dir:'h'},{x:6,y:6,size:2,dir:'h'},
+              {x:0,y:8,size:1,dir:'h'},{x:2,y:8,size:1,dir:'h'},{x:4,y:8,size:1,dir:'h'},{x:6,y:8,size:1,dir:'h'}
+            ]),
+            sunk_p1: 0,
+            sunk_p2: 0,
+            status: "active"
+          };
+          enterBattle();
+        }, 2000);
+      });
+    }
+
+    function shipsToBoard(ships) {
+      let b = Array(100).fill('0');
+      ships.forEach(s => {
+        for (let i=0; i<s.size; i++) {
+          let x = s.x + (s.dir==='h'?i:0);
+          let y = s.y + (s.dir==='v'?i:0);
+          if (x<10 && y<10) b[y*10+x] = '1';
+        }
+      });
+      return b.join('');
+    }
+
+    function enterBattle() {
+      showScreen('screen-match');
+      initBattleField();
+      updateStatus();
+    }
+
+    function initBattleField() {
+      ['enemyField', 'myFieldBattle'].forEach(id => {
+        const f = document.getElementById(id);
+        f.innerHTML = '';
+        for (let y=0; y<10; y++) for (let x=0; x<10; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.x = x; cell.dataset.y = y;
+          if (id === 'enemyField') cell.onclick = () => attack(x, y);
+          f.appendChild(cell);
+        }
+      });
+      renderBattle();
+    }
+
+    function updateStatus() {
+      const isMyTurn = (matchData.turn_id === userId);
+      document.getElementById('matchStatus').innerText = 
+        `🎯 ${isMyTurn ? 'Ваш ход' : 'Ход соперника'} | Убито: вам ${matchData.sunk_p1}/10, им ${matchData.sunk_p2}/10`;
+    }
+
+    function renderBattle() {
+      const enemyCells = document.querySelectorAll('#enemyField .cell');
+      const myCells = document.querySelectorAll('#myFieldBattle .cell');
+      for (let i=0; i<100; i++) {
+        const ec = enemyCells[i], mc = myCells[i];
+        ec.className = 'cell';
+        mc.className = 'cell';
+        if (matchData.board_p2[i] === '2' || matchData.board_p2[i] === '3') ec.classList.add('enemy-hit');
+        else if (matchData.board_p2[i] === '4') ec.classList.add('enemy-miss');
+        if (matchData.board_p1[i] === '1') mc.classList.add('ship');
+        else if (matchData.board_p1[i] === '2' || matchData.board_p1[i] === '3') mc.classList.add('hit');
+        else if (matchData.board_p1[i] === '4') mc.classList.add('miss');
+      }
+    }
+
+    function attack(x, y) {
+      if (matchData.turn_id !== userId) return;
+      fetch(`${BACKEND_URL}/match/${currentMatchId}/attack`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({telegram_id: userId, x, y})
+      }).then(r => r.json()).then(result => {
+        if (result.error) return alert(result.error);
+        // В демо обновляем вручную
+        const board = matchData.board_p2.split('');
+        const idx = y * 10 + x;
+        board[idx] = result.hit === 0 ? '4' : (result.hit === 1 ? '2' : '3');
+        matchData.board_p2 = board.join('');
+        if (result.hit === 2) matchData.sunk_p2 += 1;
+        matchData.turn_id = result.new_turn;
+        updateStatus();
+        renderBattle();
+        if (result.finished) alert(result.winner_id === userId ? '🏆 Победа!' : '💀 Поражение');
+      });
+    }
   </script>
 </body>
 </html>

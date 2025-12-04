@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SeaStrike</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 16px;
+      background: #f5f5f5;
+      color: #333;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    .status { 
+      text-align: center; 
+      margin-bottom: 16px; 
+      font-weight: bold; 
+      color: #1976d2;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 2px;
+      margin-bottom: 16px;
+    }
+    .cell {
+      aspect-ratio: 1;
+      background: #bbdefb;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      user-select: none;
+    }
+    .cell.hit { background: #f44336; }
+    .cell.miss { background: #e0e0e0; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .btn:disabled {
+      background: #90caf9;
+      cursor: not-allowed;
+    }
+    .avatar {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #ccc;
+      border: 2px solid #gold;
+      overflow: hidden;
+    }
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="status" class="status">Загрузка...</div>
+    <div class="grid" id="board"></div>
+    <button id="attackBtn" class="btn" disabled>Атаковать (дождитесь матча)</button>
+  </div>
+
+  <script>
+    // Проверка: запущено ли в Telegram
+    if (!window.Telegram?.WebApp) {
+      document.body.innerHTML = '<h2>❌ Откройте игру через Telegram!</h2>';
+      throw new Error("Not in Telegram WebApp");
+    }
+
+    const WebApp = Telegram.WebApp;
+    WebApp.expand();
+    WebApp.setHeaderColor('#1976d2');
+    WebApp.setBackgroundColor('#f5f5f5');
+
+    // === ДАННЫЕ ПОЛЬЗОВАТЕЛЯ ===
+    const initData = WebApp.initDataUnsafe;
+    const user = initData?.user;
+    if (!user) {
+      WebApp.showAlert("Ошибка: нет данных пользователя");
+      WebApp.close();
+    }
+
+    const userId = user.id;
+    const username = user.username || user.first_name || "Игрок";
+    const photoUrl = user.photo_url || null;
+
+    // === URL БЭКА ===
+    const BACKEND_URL = "https://seastrike-backend-ВАШ_ЛОГИН.repl.co"; // ← ЗАМЕНИТЕ НА СВОЙ!
+
+    // === АВАТАРКА В УГЛУ ===
+    if (photoUrl) {
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.innerHTML = `<img src="${photoUrl}" alt="avatar">`;
+      document.body.appendChild(avatar);
+    }
+
+    // === РЕГИСТРАЦИЯ В БД ===
+    fetch(`${BACKEND_URL}/player`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegram_id: userId,
+        username: username
+      })
+    })
+    .then(r => r.json())
+    .then(player => {
+      document.getElementById('status').innerText = 
+        `🎮 ${username} | Рейтинг: ${player.rating}`;
+    })
+    .catch(err => {
+      console.error(err);
+      document.getElementById('status').innerText = "❌ Ошибка подключения";
+    });
+
+    // === СОЗДАЁМ ПОЛЕ 10×10 ===
+    const board = document.getElementById('board');
+    for (let i = 0; i < 100; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.idx = i;
+      cell.innerText = i < 10 ? '0' + i : i;
+      cell.onclick = () => {
+        if (!cell.classList.contains('hit') && !cell.classList.contains('miss')) {
+          cell.style.backgroundColor = '#ffeb3b';
+          // Здесь позже — отправка атаки на сервер
+        }
+      };
+      board.appendChild(cell);
+    }
+
+    // === КНОПКА АТАКИ (временно) ===
+    const btn = document.getElementById('attackBtn');
+    btn.onclick = () => {
+      WebApp.showAlert("Атака отправлена! (пока заглушка)");
+    };
+
+    // Готово!
+    console.log("SeaStrike Mini App загружено");
+  </script>
+</body>
+</html>

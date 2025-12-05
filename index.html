@@ -119,8 +119,16 @@ body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#
    чтобы включить онлайн-режим с Realtime DB.
  - Если не хочешь сразу Firebase — оставь USE_FIREBASE=false — mock mode работает сразу.
 =================================================== */
-const USE_FIREBASE = false; // <-- поставь true когда вставишь config
-const FIREBASE_CONFIG = null; // <-- Вставь сюда объект конфигурации Firebase (из консоли) или оставь null
+const USE_FIREBASE = true; // <-- поставь true когда вставишь config
+const firebaseConfig = {
+  apiKey: "AIzaSyA0FJiIEr0p8nSkYVi4MVhtnJbBtcecoTA",
+  authDomain: "seabattle-35c44.firebaseapp.com",
+  projectId: "seabattle-35c44",
+  storageBucket: "seabattle-35c44.firebasestorage.app",
+  messagingSenderId: "769696025216",
+  appId: "1:769696025216:web:75f68e396e4bdcbb9bb465",
+  measurementId: "G-GK4P9CMV30"
+};
 
 // ---------- Telegram WebApp fallback ----------
 const WebApp = window.Telegram?.WebApp || null;

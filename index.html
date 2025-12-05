@@ -1,30 +1,35 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SeaStrike</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SeaStrike — Telegram Mini App</title>
+
+  <!-- Telegram Web App SDK (нужен для работы внутри Telegram) -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:sans-serif; padding:16px; background:#e3f2fd; }
-    .screen { display:none; }
-    #screen-menu { display:block; }
-    .btn { display:block; width:100%; padding:14px; margin:8px 0; border:none; border-radius:10px; background:#1976d2; color:white; font-weight:bold; }
-    .grid { display:grid; grid-template-columns:repeat(10,1fr); gap:2px; margin:16px 0; }
-    .cell { aspect-ratio:1; background:#bbdefb; border-radius:4px; }
-    .ships-panel { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
-    .ship { background:#2196f3; width:24px; height:24px; margin:2px; border-radius:4px; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:sans-serif;padding:16px;background:#e3f2fd}
+    .screen{display:none}
+    #screen-menu{display:block}
+    .btn{display:block;width:100%;padding:14px;margin:8px 0;border:none;border-radius:10px;background:#1976d2;color:white;font-weight:700;cursor:pointer}
+    .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;margin:16px 0}
+    .cell{aspect-ratio:1;background:#bbdefb;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b3d91}
+    .ships-panel{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+    .ship{background:#2196f3;width:36px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;cursor:grab}
+    h2,h3{margin:8px 0}
+    #status{margin:8px 0;font-weight:700}
   </style>
 </head>
 <body>
   <div id="screen-menu" class="screen">
     <h2>SeaStrike</h2>
-    <button class="btn" onclick="startMatch()">▶ Начать матч</button>
+    <button class="btn" onclick="startMatch()">▶️ Начать матч</button>
   </div>
 
   <div id="screen-placement" class="screen">
-    <h3>Расставьте корабли</h3>
+    <h3>Расставьте корабли (перетащите на поле)</h3>
     <div class="ships-panel" id="shipsPanel"></div>
     <div class="grid" id="myField"></div>
     <button class="btn" id="readyBtn" onclick="submitPlacement()" disabled>✅ Готово</button>
@@ -41,76 +46,113 @@
   </div>
 
   <script>
-    if (!window.Telegram?.WebApp) { alert('Откройте в Telegram!'); throw 0; }
-    const WebApp = Telegram.WebApp; WebApp.expand();
+    // ----------------- Telegram WebApp init (без фейлов в браузере) -----------------
+    const WebApp = window.Telegram?.WebApp || null;
+    // Если открываем в Telegram, WebApp.initDataUnsafe.user даст объект пользователя.
+    // Если не в Telegram (проверка/локальная отладка), я ставлю заглушку.
+    const initUser = WebApp?.initDataUnsafe?.user || { id: 12345, username: 'local_test' };
+    const userId = initUser.id;
 
-    const user = WebApp.initDataUnsafe?.user;
-    if (!user) WebApp.close();
-    const userId = user.id;
+    if (WebApp) {
+      try { WebApp.expand?.(); } catch(e) { console.warn('WebApp.expand error', e); }
+    } else {
+      console.log('Не обнаружен Telegram.WebApp — работаем в тестовом режиме (user id=' + userId + ')');
+    }
+
+    // ----------------- Попытка создать воркер mock-backend (если GitHub Pages разрешит) -----------------
+    let worker = null;
+    try {
+      // worker файл должен быть в той же папке и называться mock-worker.js
+      worker = new Worker('mock-worker.js');
+    } catch (err) {
+      console.warn('Воркер не создан, будет использован встроенный mock (fallback).', err);
+      worker = null;
+    }
+
+    // mockFetch: если есть воркер — использует его, иначе локальный fallback
+    function mockFetch(path, data = {}) {
+      if (worker) {
+        return new Promise(resolve => {
+          const url = 'http://mock' + path;
+          const onMessage = (e) => {
+            if (e.data && e.data.url === url) {
+              resolve(e.data.result);
+              worker.removeEventListener('message', onMessage);
+            } else if (e.data && e.data.error) {
+              resolve(e.data);
+              worker.removeEventListener('message', onMessage);
+            }
+          };
+          worker.addEventListener('message', onMessage);
+          worker.postMessage({ url: 'http://mock' + path, method: 'POST', body: data });
+        });
+      } else {
+        // fallback: inline endpoints (тот же контракт)
+        const endpoints = {
+          '/health': () => ({ status: 'ok', service: 'Mock Backend' }),
+          '/player': (d={})=>({ telegram_id: d.telegram_id || userId, username: d.username || 'Player', rating:1000, skin_ship:'default', skin_board:'wood', frame:'none' }),
+          '/match/random/join': ()=>({ status:'matched', match_id:'demo-123', opponent_id:999999, is_your_turn:true }),
+          '/match/demo-123/place-ships': ()=>({ status:'ok' }),
+          '/match/demo-123/wait-ready': ()=>({ status:'ready' }),
+          '/match/demo-123/attack': (data={}) => {
+            const r = Math.random();
+            const hit = r < 0.3 ? 2 : r < 0.6 ? 1 : 0;
+            const finished = hit === 2 && Math.random() < 0.1;
+            return { hit, new_turn:999999, finished, winner_id: finished ? (Math.random()<0.5 ? (data.telegram_id||userId) : null) : null };
+          }
+        };
+        return new Promise(resolve => setTimeout(()=> resolve(endpoints[path] ? endpoints[path](data) : { error:'not found' }), 80));
+      }
+    }
+
+    // ----------------- UI + логика (минималка) -----------------
+    function showScreen(id){
+      document.querySelectorAll('.screen').forEach(s=>s.style.display='none');
+      document.getElementById(id).style.display='block';
+    }
 
     let myShips = [];
 
-    // ✅ MOCK BACKEND — работает без сервера
-    async function mockFetch(path, data = {}) {
-      return new Promise(resolve => {
-        const workerCode = `(${(() => {
-          ${document.querySelector('script').textContent}
-        })})();`;
-        const blob = new Blob([workerCode], { type: 'application/javascript' });
-        const url = URL.createObjectURL(blob);
-        const worker = new Worker(url);
-        worker.onmessage = e => {
-          resolve(e.data.result);
-          worker.terminate();
-          URL.revokeObjectURL(url);
-        };
-        worker.postMessage({ url: 'http://mock' + path, method: 'POST', body: data });
-      });
-    }
-
-    function showScreen(id) {
-      document.querySelectorAll('.screen').forEach(s => s.style.display = 'none');
-      document.getElementById(id).style.display = 'block';
-    }
-
-    function startMatch() {
+    function startMatch(){
       showScreen('screen-placement');
       initPlacement();
     }
 
-    function initPlacement() {
-      const panel = document.getElementById('shipsPanel');
-      panel.innerHTML = '';
-      [4,3,3,2,2,2,1,1,1,1].forEach(size => {
-        const div = document.createElement('div');
-        div.className = 'ship';
-        div.dataset.size = size;
-        div.draggable = true;
-        div.ondragstart = e => e.dataTransfer.setData('size', size);
-        panel.appendChild(div);
+    function initPlacement(){
+      const panel = document.getElementById('shipsPanel'); panel.innerHTML = '';
+      [4,3,3,2,2,2,1,1,1,1].forEach(size=>{
+        const d = document.createElement('div');
+        d.className = 'ship';
+        d.draggable = true;
+        d.innerText = size;
+        d.dataset.size = size;
+        d.ondragstart = e => e.dataTransfer.setData('size', size);
+        panel.appendChild(d);
       });
 
-      const field = document.getElementById('myField');
-      field.innerHTML = '';
-      for (let i = 0; i < 100; i++) {
+      const field = document.getElementById('myField'); field.innerHTML = '';
+      for(let i=0;i<100;i++){
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.dataset.idx = i;
-        cell.ondrop = e => {
-          e.preventDefault();
-          const size = e.dataTransfer.getData('size');
-          placeShip(i, parseInt(size));
-        };
+        cell.ondrop = e => { e.preventDefault(); const size = e.dataTransfer.getData('size'); placeShip(i, parseInt(size)); };
         cell.ondragover = e => e.preventDefault();
         field.appendChild(cell);
       }
+      myShips = [];
+      document.getElementById('readyBtn').disabled = true;
     }
 
     function placeShip(start, size) {
+      // простая логика: пишем корабль горизонтально, без проверки коллизий
       myShips.push({ start, size });
-      if (myShips.reduce((s, sh) => s + sh.size, 0) === 20) {
-        document.getElementById('readyBtn').disabled = false;
+      const field = document.getElementById('myField');
+      for (let k = 0; k < size; k++) {
+        const idx = start + k;
+        if (field.children[idx]) field.children[idx].style.background = '#90caf9';
       }
+      const total = myShips.reduce((s, sh) => s + sh.size, 0);
+      if (total >= 20) document.getElementById('readyBtn').disabled = false;
     }
 
     async function submitPlacement() {
@@ -121,34 +163,31 @@
         await mockFetch('/match/demo-123/wait-ready', { telegram_id: userId });
         showScreen('screen-match');
         initBattle();
-      }, 1000);
+      }, 600);
     }
 
     function initBattle() {
-      ['enemyField', 'myFieldBattle'].forEach(id => {
-        const f = document.getElementById(id);
-        f.innerHTML = '';
-        for (let i = 0; i < 100; i++) {
-          const c = document.createElement('div');
-          c.className = 'cell';
-          if (id === 'enemyField') c.onclick = () => attack(i);
+      ['enemyField','myFieldBattle'].forEach(id=>{
+        const f = document.getElementById(id); f.innerHTML = '';
+        for(let i=0;i<100;i++){
+          const c = document.createElement('div'); c.className = 'cell';
+          if (id === 'enemyField') { c.onclick = ()=> attack(i); c.style.cursor = 'pointer'; }
           f.appendChild(c);
         }
       });
     }
 
     async function attack(idx) {
-      const result = await mockFetch('/match/demo-123/attack', {
-        telegram_id: userId,
-        x: idx % 10,
-        y: Math.floor(idx / 10)
-      });
+      const result = await mockFetch('/match/demo-123/attack', { telegram_id: userId, x: idx % 10, y: Math.floor(idx / 10) });
       const cell = document.querySelectorAll('#enemyField .cell')[idx];
       cell.style.background = result.hit === 0 ? '#eceff1' : result.hit === 1 ? '#ffccbc' : '#f44336';
-      document.getElementById('status').innerText = result.finished ? 
-        (result.winner_id ? '🏆 Победа!' : '💀 Поражение') : 
-        '🎯 Ход соперника';
+      const status = document.getElementById('status');
+      if (result.finished) status.innerText = result.winner_id ? '🏆 Победа!' : '💀 Поражение';
+      else status.innerText = (result.new_turn === userId) ? '🎯 Ваш ход' : '🎯 Ход соперника';
     }
+
+    // стартовый экран
+    showScreen('screen-menu');
   </script>
 </body>
 </html>

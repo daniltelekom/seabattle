@@ -1,314 +1,395 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>SeaStrike MiniApp — Telegram</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>SeaStrike — MiniApp</title>
 
-<style>
-:root{--accent:#1976d2;--bg:#e9f4ff;--card:#fff;--cell:#e8f3ff;--hit:#f44336;--occupied:#2b9cff}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#072146;display:flex;flex-direction:column;gap:8px}
-.header{display:flex;justify-content:space-between;align-items:center}
-.panel{background:var(--card);padding:10px;border-radius:12px;box-shadow:0 6px 18px rgba(2,20,60,0.06)}
-.layout{display:grid;grid-template-columns:1fr 360px;gap:12px}
-@media (max-width:920px){ .layout{grid-template-columns:1fr} }
-.field-wrap{display:flex;justify-content:center;align-items:center}
-.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;touch-action:manipulation;width:100%}
-.cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none}
-.cell.occupied{background:var(--occupied);color:white}
-.cell.hit{background:var(--hit);color:white}
-.ships-panel{display:flex;flex-wrap:wrap;gap:8px}
-.ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;border:none;min-width:42px}
-.ship-btn.selected{outline:3px solid #ffca28}
-.footer{position:fixed;left:10px;right:10px;bottom:10px;display:flex;gap:8px;z-index:20}
-.footer .panel{flex:1;display:flex;justify-content:space-between;align-items:center;padding:10px}
-.info{font-size:13px;color:#263238}
-.small{font-size:12px;color:#3b4752}
-#dbg{position:fixed;right:8px;top:8px;background:rgba(0,0,0,0.6);color:#fff;padding:6px 8px;border-radius:6px;display:none}
-</style>
+  <!-- Socket.IO client -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root{
+      --accent:#1976d2;
+      --bg:#e9f4ff;
+      --card:#fff;
+      --cell:#e8f3ff;
+      --hit:#f44336;
+      --occupied:#2b9cff;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#072146;display:flex;flex-direction:column;gap:10px;min-height:100vh}
+    .header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .panel{background:var(--card);padding:10px;border-radius:12px;box-shadow:0 6px 18px rgba(2,20,60,0.06)}
+    .layout{display:grid;grid-template-columns:1fr 320px;gap:12px}
+    @media (max-width:920px){ .layout{grid-template-columns:1fr} }
+    .field-wrap{display:flex;justify-content:center;align-items:flex-start}
+    .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;touch-action:manipulation;width:100%}
+    .cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none}
+    .cell.occupied{background:var(--occupied);color:white}
+    .cell.hit{background:var(--hit);color:white}
+    .ships-panel{display:flex;flex-wrap:wrap;gap:8px}
+    .ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;border:none;min-width:42px}
+    .ship-btn.selected{outline:3px solid #ffca28}
+    .footer{position:fixed;left:10px;right:10px;bottom:10px;display:flex;gap:8px;z-index:20}
+    .footer .panel{flex:1;display:flex;justify-content:space-between;align-items:center;padding:10px}
+    .info{font-size:13px;color:#263238}
+    .small{font-size:12px;color:#3b4752}
+    #dbg{position:fixed;right:8px;top:8px;background:rgba(0,0,0,0.7);color:#fff;padding:6px 8px;border-radius:6px;display:none;max-width:40%;white-space:pre-wrap;z-index:40;font-size:12px}
+    .shop-btn{background:linear-gradient(90deg,#ffb74d,#ff8a65);border:none;color:#fff;padding:8px 10px;border-radius:8px}
+    input, select{padding:8px;border-radius:8px;border:1px solid #ddd}
+    .compact{font-size:12px}
+    /* make grid tall on small screens so user doesn't need to scroll down */
+    #boardContainer{width:100%;max-width:560px;display:flex;justify-content:center}
+  </style>
 </head>
 <body>
-<div class="header">
-  <div><h2>SeaStrike — MiniApp</h2><div class="small">Классический морской бой. Играй с другом или в поиск.</div></div>
-  <div class="small">PlayerID: <span id="playerIdLabel">—</span></div>
-</div>
-
-<div class="layout">
-  <div class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div class="ships-panel" id="shipsPanel"></div>
-      <div style="display:flex;gap:8px">
-        <button id="rotateBtn" class="ship-btn">Повернуть (H)</button>
-        <button id="autoBtn" class="ship-btn">Авто</button>
-      </div>
+  <div class="header">
+    <div>
+      <h2>SeaStrike — MiniApp</h2>
+      <div class="small">Классический морской бой. Играй с другом или в поиск.</div>
     </div>
-
-    <div id="fieldWrap" class="field-wrap" style="margin-top:12px">
-      <div id="boardContainer" style="width:100%;max-width:560px">
-        <div id="myField" class="grid"></div>
-      </div>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-      <div id="status" class="small">Выберите корабль и тапните по полю</div>
-      <div style="display:flex;gap:8px">
-        <button id="undoBtn" class="ship-btn">↶ Отменить</button>
-        <button id="eraseModeBtn" class="ship-btn">Удаление: выкл</button>
-      </div>
-    </div>
-
+    <div class="small">PlayerID: <span id="playerIdLabel">—</span></div>
   </div>
 
-  <div>
-    <div class="panel" style="display:flex;flex-direction:column;gap:8px">
-      <div style="display:flex;gap:8px">
-        <select id="modeSelect"><option value="mock">Mode: mock</option><option value="railway">Mode: railway</option></select>
-        <button id="createMatchBtn" class="ship-btn">Создать матч</button>
-        <input id="matchIdInput" placeholder="match id для join" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd"/>
+  <div class="layout">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="ships-panel" id="shipsPanel"></div>
+        <div style="display:flex;gap:8px">
+          <button id="rotateBtn" class="ship-btn">Повернуть (H)</button>
+          <button id="autoBtn" class="ship-btn">Авто</button>
+        </div>
       </div>
 
-      <div style="display:flex;gap:8px">
-        <button id="joinMatchBtn" class="ship-btn">Присоединиться</button>
-        <button id="findBtn" class="ship-btn">Найти игру</button>
-        <button id="leaveBtn" class="ship-btn">Выйти</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <div class="info">Mode: <span id="modeLabel">mock</span></div>
-        <div class="info">Match: <span id="matchLabel">—</span></div>
-        <div class="info">Turn: <span id="turnLabel">—</span></div>
-        <div class="info">Rating: <span id="ratingLabel">1000</span> • Stars: <span id="starsLabel">0</span></div>
+      <div id="fieldWrap" class="field-wrap" style="margin-top:12px">
+        <div id="boardContainer">
+          <div id="myField" class="grid" aria-label="Поле игрока"></div>
+        </div>
       </div>
 
-      <hr/>
-      <div class="info"><b>Магазин</b></div>
-      <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <div id="status" class="small">Выберите корабль и тапните по полю</div>
+        <div style="display:flex;gap:8px">
+          <button id="undoBtn" class="ship-btn">↶ Отменить</button>
+          <button id="eraseModeBtn" class="ship-btn">Удаление: выкл</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="createMatchBtn" class="ship-btn">Создать матч</button>
+          <input id="matchIdInput" placeholder="match id для join" style="flex:1"/>
+          <button id="joinMatchBtn" class="ship-btn">Присоединиться</button>
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button id="findBtn" class="ship-btn">Найти игру</button>
+          <button id="leaveBtn" class="ship-btn">Выйти</button>
+          <button id="shopBtn" class="shop-btn">Магазин</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px" class="compact">
+          <div class="info">Mode: <span id="modeLabel">railway</span></div>
+          <div class="info">Match: <span id="matchLabel">—</span></div>
+          <div class="info">Turn: <span id="turnLabel">—</span></div>
+          <div class="info">Rating: <span id="ratingLabel">1000</span></div>
+        </div>
+
+        <hr/>
+
+        <div class="info"><b>Магазин</b></div>
         <div style="display:flex;gap:8px;align-items:center">
           <img src="" alt="" style="width:48px;height:32px;background:#ddd;border-radius:6px"/>
           <div style="flex:1">
             <div class="small">Skin: Blue Ship — Цена: 50 stars</div>
             <div style="display:flex;gap:8px;margin-top:6px">
-              <button id="buySkinBtn" class="ship-btn">Купить за stars</button>
-              <button id="buyStarsBtn" class="ship-btn">Купить stars (через бота)</button>
+              <button id="buySkinBtn" class="ship-btn">Купить</button>
             </div>
           </div>
         </div>
+
       </div>
-
     </div>
   </div>
-</div>
 
-<div id="dbg">DBG</div>
+  <div id="dbg">DBG</div>
 
-<div class="footer">
-  <div class="panel">
-    <div class="info">Поддержка: Railway (онлайн) / Mock (локал)</div>
-    <div style="display:flex;gap:8px">
-      <button id="readyBtn" class="ship-btn">✅ Готов</button>
-      <button id="attackBtn" class="ship-btn" disabled>Атаковать (demo)</button>
+  <div class="footer">
+    <div class="panel">
+      <div class="info">Поддержка: Railway (онлайн)</div>
+      <div style="display:flex;gap:8px">
+        <button id="readyBtn" class="ship-btn">✅ Готов</button>
+        <button id="attackBtn" class="ship-btn" disabled>Атаковать</button>
+      </div>
     </div>
   </div>
-</div>
 
-  <script>
-/* ====== Polling helpers (для railway REST) ====== */
-let pollInterval = null;
-async function pollMatchStatus() {
-  if (!currentMatchId) return;
-  try {
-    const url = API_URL + '/match-status?matchId=' + encodeURIComponent(currentMatchId);
-    const resp = await fetch(url, { method: 'GET' });
-    if (!resp.ok) {
-      console.warn('match-status http error', resp.status);
-      return;
-    }
-    const data = await resp.json();
-    if (!data) return;
+<script>
+/* ====== Конфигурация (вставь сюда свои ссылки) ====== */
+const SOCKET_URL = "http://seabattle-server-production.up.railway.app"; // <- обязателен протокол https://
+const SHOP_URL = "https://t.me/YourBotOrShop"; // <- подставь сюда ссылку на бота/магазин или страницу магазина
 
-    // Обновляем UI
-    matchLabel.innerText = data.id || currentMatchId;
-    modeLabel.innerText = 'railway';
-    currentTurn = data.turn || null;
-    turnLabel.innerText = currentTurn ? String(currentTurn) : '—';
+/* ====== Инициализация игрока (Telegram WebApp если есть) ====== */
+const WebApp = window.Telegram?.WebApp || null;
+const initUser = WebApp?.initDataUnsafe?.user || { id: Math.floor(Math.random()*1e6), username: 'local_test' };
+const PLAYER_ID = String(initUser.id);
+const PLAYER_NAME = initUser.username || ('p' + PLAYER_ID);
+document.getElementById('playerIdLabel').innerText = PLAYER_ID;
 
-    if (data.state === 'started' && String(currentTurn) === String(PLAYER_ID)) {
-      attackBtn.disabled = false;
-      updateStatus('Ваш ход');
-    } else if (data.state === 'started') {
-      attackBtn.disabled = true;
-      updateStatus('Ход соперника');
-    } else if (data.state === 'waiting') {
-      attackBtn.disabled = true;
-      updateStatus('Ожидание соперника/готовности');
-    } else if (data.state === 'finished') {
-      attackBtn.disabled = true;
-      updateStatus('Матч завершён');
-      stopPollingMatch();
-    }
-  } catch (e) {
-    console.warn('poll error', e);
+/* ====== UI refs ====== */
+const myField = document.getElementById('myField');
+const shipsPanel = document.getElementById('shipsPanel');
+const rotateBtn = document.getElementById('rotateBtn');
+const autoBtn = document.getElementById('autoBtn');
+const undoBtn = document.getElementById('undoBtn');
+const eraseModeBtn = document.getElementById('eraseModeBtn');
+const readyBtn = document.getElementById('readyBtn');
+const attackBtn = document.getElementById('attackBtn');
+const statusEl = document.getElementById('status');
+const createMatchBtn = document.getElementById('createMatchBtn');
+const joinMatchBtn = document.getElementById('joinMatchBtn');
+const findBtn = document.getElementById('findBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+const matchIdInput = document.getElementById('matchIdInput');
+const matchLabel = document.getElementById('matchLabel');
+const turnLabel = document.getElementById('turnLabel');
+const modeLabel = document.getElementById('modeLabel');
+const shopBtn = document.getElementById('shopBtn');
+const buySkinBtn = document.getElementById('buySkinBtn');
+const dbg = document.getElementById('dbg');
+const ratingLabel = document.getElementById('ratingLabel');
+
+/* ====== Game state & placement logic ====== */
+const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
+function group(arr){ const out={}; arr.forEach(s=>out[s]=(out[s]||0)+1); return out; }
+
+let shipsPool = group(SHIP_SIZES);
+let placed = []; // ships placed
+let nextShipId = 1;
+let selectedSize = null;
+let orientation = 'H';
+let eraseMode = false;
+
+/* ====== Helpers ====== */
+function logDbg(msg){ if(!dbg) return; dbg.style.display='block'; try{ dbg.innerText = typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2); }catch(e){ dbg.innerText = String(msg); } }
+function coords(idx){ return { x: idx % 10, y: Math.floor(idx / 10) }; }
+function cellIndex(x,y){ return y*10 + x; }
+function cellsFor(start,size,orient){
+  const p = coords(start); const cells=[];
+  if(orient==='H'){ for(let k=0;k<size;k++){ const nx=p.x+k; if(nx>9) return null; cells.push(cellIndex(nx,p.y)); } }
+  else { for(let k=0;k<size;k++){ const ny=p.y+k; if(ny>9) return null; cells.push(cellIndex(p.x,ny)); } }
+  return cells;
+}
+function adjacentCellsOf(c){ const {x,y}=coords(c); const out=[]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const nx=x+dx, ny=y+dy; if(nx>=0&&nx<10&&ny>=0&&ny<10) out.push(cellIndex(nx,ny)); } return out; }
+function overlapsOrAdjacent(cells){ const occ = new Set(placed.flatMap(s=>s.cells)); for(const c of cells){ if(occ.has(c)) return {overlap:true}; for(const n of adjacentCellsOf(c)) if(occ.has(n)) return {adjacent:true,at:n}; } return null; }
+
+function buildField(){
+  myField.innerHTML='';
+  for(let i=0;i<100;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.idx = i;
+    c.addEventListener('click', onCellClick);
+    c.addEventListener('touchend', function(e){ e.preventDefault(); onCellClick.call(this,e); });
+    myField.appendChild(c);
   }
 }
-function startPollingMatch() {
-  stopPollingMatch();
-  pollMatchStatus(); // вызвать сразу
-  pollInterval = setInterval(pollMatchStatus, 2000);
+
+function renderShipsPanel(){
+  shipsPanel.innerHTML='';
+  const unique = Array.from(new Set(SHIP_SIZES)).sort((a,b)=>b-a);
+  unique.forEach(size=>{
+    const left = shipsPool[size] || 0;
+    const btn = document.createElement('button');
+    btn.className = 'ship-btn' + (selectedSize===size ? ' selected' : '');
+    btn.type='button';
+    btn.innerText = `${size} × ${left}`;
+    function handler(e){ e.preventDefault(); if(left<=0){ updateStatus('Нет таких кораблей'); return; } selectedSize = (selectedSize===size)?null:size; renderShipsPanel(); updateStatus(); }
+    btn.addEventListener('click', handler);
+    btn.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); });
+    shipsPanel.appendChild(btn);
+  });
 }
-function stopPollingMatch() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
+
+function renderAll(){
+  document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit'); c.textContent=''; });
+  placed.forEach(s => s.cells.forEach((ci,i)=>{ const el = myField.children[ci]; if(!el) return; el.classList.add('occupied'); if(i===0) el.textContent = s.size; }));
+  renderShipsPanel();
+  readyBtn.disabled = !allPlaced();
+  updateStatus();
 }
 
-/* ====== Matchmaking / Buttons (REST & mock) ====== */
+function allPlaced(){ return Object.values(shipsPool).every(v=>v===0); }
 
-// CREATE MATCH
-createMatchBtn.addEventListener('click', async () => {
-  if (modeSelect.value !== 'railway') {
-    // mock flow
-    currentMatchId = 'demo-' + Math.floor(Math.random() * 10000);
-    matchLabel.innerText = currentMatchId;
-    modeLabel.innerText = 'mock';
-    updateStatus('Mock match ready: ' + currentMatchId);
-    // в mock даём ход создателю
-    currentTurn = PLAYER_ID;
-    turnLabel.innerText = String(currentTurn);
-    attackBtn.disabled = false;
-    return;
-  }
+function placeShipAt(startIdx,size,orient){
+  const cells = cellsFor(startIdx,size,orient);
+  if(!cells) return { ok:false, reason:'out' };
+  const bad = overlapsOrAdjacent(cells);
+  if(bad){ if(bad.overlap) return {ok:false,reason:'overlap'}; if(bad.adjacent) return {ok:false,reason:'adjacent'}; }
+  const ship = { id: nextShipId++, size, start: startIdx, orientation: orient, cells };
+  placed.push(ship);
+  shipsPool[size] = (shipsPool[size]||0) - 1;
+  renderAll();
+  return { ok:true, ship };
+}
+function findShipByCell(idx){ return placed.find(s=>s.cells.includes(idx)); }
+function removeShipById(id){ const i = placed.findIndex(s=>s.id===id); if(i===-1) return false; const s = placed[i]; shipsPool[s.size] = (shipsPool[s.size]||0)+1; placed.splice(i,1); renderAll(); return true; }
+function updateStatus(msg){
+  if(msg){ statusEl.innerText = msg; logDbg(msg); return; }
+  if(allPlaced()) statusEl.innerText = 'Все корабли расставлены — нажми Готов';
+  else if(selectedSize) statusEl.innerText = `Выбрано ${selectedSize} (ориентация ${orientation})`;
+  else statusEl.innerText = 'Выберите корабль';
+}
 
-  // railway flow
-  if (!API_URL || !API_URL.startsWith('http')) {
-    updateStatus('Неверный API_URL — проверь строку с https://');
-    return;
-  }
-  updateStatus('Создаём матч...');
-  const res = await apiFetch('/create-match', { playerId: String(PLAYER_ID) });
-  if (res && res.matchId) {
-    currentMatchId = res.matchId;
+/* ===== UI handlers (placement controls) ===== */
+function onCellClick(e){
+  const el = e.currentTarget || this;
+  const idx = parseInt(el.dataset.idx);
+  if(eraseMode){ const ship = findShipByCell(idx); if(ship){ removeShipById(ship.id); updateStatus('Корабль удалён'); } else updateStatus('Нет корабля'); return; }
+  if(!selectedSize){ updateStatus('Выберите корабль'); return; }
+  const res = placeShipAt(idx, selectedSize, orientation);
+  if(!res.ok){ if(res.reason==='out') updateStatus('Выход за границы'); else if(res.reason==='overlap') updateStatus('Перекрытие'); else if(res.reason==='adjacent') updateStatus('Рядом другой корабль'); else updateStatus('Нельзя поставить'); }
+  else { updateStatus('Корабль поставлен'); if((shipsPool[selectedSize]||0) <= 0) selectedSize = null; }
+}
+
+rotateBtn.addEventListener('click', ()=>{ orientation = (orientation==='H') ? 'V' : 'H'; rotateBtn.innerText = `Повернуть (${orientation})`; updateStatus(); });
+autoBtn.addEventListener('click', ()=>{ randomPlaceAll(); updateStatus('Авто-расстановка'); });
+undoBtn.addEventListener('click', ()=>{ if(placed.length===0){ updateStatus('Нечего отменять'); return; } const last = placed.pop(); shipsPool[last.size] = (shipsPool[last.size]||0) + 1; renderAll(); updateStatus('Отменён последний'); });
+eraseModeBtn.addEventListener('click', ()=>{ eraseMode = !eraseMode; eraseModeBtn.innerText = `Удаление: ${eraseMode ? 'вкл' : 'выкл'}`; });
+
+function clearAll(){ placed=[]; shipsPool = group(SHIP_SIZES); nextShipId = 1; selectedSize = null; orientation = 'H'; eraseMode = false; eraseModeBtn.innerText='Удаление: выкл'; renderAll(); }
+function randomPlaceAll(){ clearAll(); const sizes=[...SHIP_SIZES].sort(()=>Math.random()-0.5); for(const s of sizes){ let tries=0,ok=false; while(tries<500&&!ok){ const start=Math.floor(Math.random()*100); const orient=Math.random()<0.5?'H':'V'; const cells=cellsFor(start,s,orient); if(cells && !overlapsOrAdjacent(cells)){ placed.push({ id: nextShipId++, size: s, start, orientation: orient, cells }); shipsPool[s] = (shipsPool[s]||0)-1; ok=true; } tries++; } if(!ok) return randomPlaceAll(); } renderAll(); }
+
+/* ===== Socket.IO client ===== */
+let socket = null;
+function initSocket(){
+  if(socket) return;
+  if(!SOCKET_URL || !SOCKET_URL.startsWith('http')){ updateStatus('Неправильный SOCKET_URL'); return; }
+  socket = io(SOCKET_URL, { transports: ['websocket'] });
+
+  socket.on('connect', ()=>{ logDbg('socket connected: ' + socket.id); socket.emit('identify', { playerId: PLAYER_ID, username: PLAYER_NAME }); });
+  socket.on('connect_error', (err) => { logDbg('connect_error: ' + (err && err.message ? err.message : err)); });
+  socket.on('disconnect', (reason) => { logDbg('disconnect: ' + reason); });
+
+  socket.on('identified', d => logDbg('identified ok'));
+
+  socket.on('match_created', d => {
+    currentMatchId = d.matchId;
     matchLabel.innerText = currentMatchId;
     modeLabel.innerText = 'railway';
     updateStatus('Матч создан: ' + currentMatchId);
-    startPollingMatch();
-  } else {
-    console.error('create-match failed', res);
-    updateStatus('Ошибка создания матча: ' + (res && res.error ? res.error : 'no response'));
-  }
-});
+  });
 
-// JOIN MATCH
-joinMatchBtn.addEventListener('click', async () => {
-  const id = matchIdInput.value.trim();
-  if (!id) { updateStatus('Введите match id'); return; }
-
-  if (modeSelect.value !== 'railway') {
-    currentMatchId = id;
-    matchLabel.innerText = id;
-    modeLabel.innerText = 'mock';
-    updateStatus('Joined mock');
-    currentTurn = PLAYER_ID;
-    turnLabel.innerText = String(currentTurn);
-    attackBtn.disabled = false;
-    return;
-  }
-
-  updateStatus('Присоединяемся к ' + id + '...');
-  const res = await apiFetch('/join-match', { matchId: id, playerId: String(PLAYER_ID) });
-  if (res && res.ok) {
-    currentMatchId = id;
+  socket.on('match_joined', d => {
+    currentMatchId = d.matchId;
     matchLabel.innerText = currentMatchId;
     modeLabel.innerText = 'railway';
-    updateStatus('Успешно присоединился: ' + id);
-    startPollingMatch();
-  } else {
-    console.error('join-match failed', res);
-    updateStatus('Ошибка join: ' + (res && res.error ? res.error : 'no response'));
-  }
+    updateStatus('Присоединился: ' + currentMatchId);
+  });
+
+  socket.on('match_found', d => {
+    currentMatchId = d.matchId;
+    matchLabel.innerText = currentMatchId;
+    modeLabel.innerText = 'railway';
+    updateStatus('Найден матч: ' + currentMatchId);
+  });
+
+  socket.on('placement_update', d => updateStatus('Противник отправил расстановку'));
+
+  socket.on('match_started', d => {
+    currentMatchId = d.matchId;
+    currentTurn = d.turn;
+    turnLabel.innerText = String(currentTurn);
+    updateStatus('Матч начался — ход: ' + d.turn);
+    attackBtn.disabled = String(currentTurn) !== String(PLAYER_ID);
+  });
+
+  socket.on('shot_result', d => {
+    updateStatus(`Результат: ${d.result} (${d.x},${d.y})`);
+    currentTurn = d.newTurn;
+    turnLabel.innerText = String(currentTurn || '—');
+    attackBtn.disabled = String(currentTurn) !== String(PLAYER_ID);
+    if(d.finished){ updateStatus('Матч завершён. Победитель: ' + d.winner); attackBtn.disabled = true; }
+  });
+
+  socket.on('match_finished', d => { updateStatus('Матч завершён. Победитель: ' + (d.winner || '—')); attackBtn.disabled = true; });
+  socket.on('player_left', d => updateStatus('Игрок ушёл: ' + d.playerId));
+  socket.on('error', e => logDbg('server error: ' + JSON.stringify(e)));
+}
+
+/* ===== Buttons -> socket emits ===== */
+createMatchBtn.addEventListener('click', ()=>{
+  initSocket();
+  socket.emit('create_match', { playerId: PLAYER_ID });
+  updateStatus('Создание матча...');
 });
 
-// FIND (queue)
-findBtn.addEventListener('click', async () => {
-  if (modeSelect.value !== 'railway') { updateStatus('Mock: нет поиска'); return; }
-  updateStatus('В поиске соперника...');
-  const res = await apiFetch('/find', { playerId: String(PLAYER_ID) });
-  if (res) {
-    if (res.matchId) {
-      currentMatchId = res.matchId;
-      matchLabel.innerText = currentMatchId;
-      modeLabel.innerText = 'railway';
-      updateStatus('Найден матч: ' + currentMatchId);
-      startPollingMatch();
-    } else {
-      updateStatus(res.status || 'В очереди на поиск...');
-    }
-  } else updateStatus('Ошибка поиска');
+joinMatchBtn.addEventListener('click', ()=>{
+  const id = matchIdInput.value.trim();
+  if(!id){ updateStatus('Введите match id'); return; }
+  initSocket();
+  socket.emit('join_match', { matchId: id, playerId: PLAYER_ID });
+  updateStatus('Запрошено присоединение...');
 });
 
-// READY (place ships)
-readyBtn.addEventListener('click', async () => {
-  if (!allPlaced()) { updateStatus('Сначала размести все корабли'); return; }
-
-  if (modeSelect.value !== 'railway') {
-    // mock flow: стартуем матч локально
-    updateStatus('Mock: расстановка отправлена — ожидаем старт');
-    setTimeout(() => {
-      if (!currentMatchId) currentMatchId = 'demo-' + Math.floor(Math.random() * 10000);
-      matchLabel.innerText = currentMatchId;
-      modeLabel.innerText = 'mock';
-      currentTurn = PLAYER_ID;
-      turnLabel.innerText = String(currentTurn);
-      attackBtn.disabled = false;
-      updateStatus('Mock: матч начался — ваш ход');
-    }, 600);
-    return;
-  }
-
-  // railway flow: отправляем расстановку и начинаем опрашивать статус
-  updateStatus('Отправка расстановки...');
-  const res = await apiFetch('/place-ships', { matchId: currentMatchId, playerId: String(PLAYER_ID), ships: placed });
-  if (res && res.ok) {
-    updateStatus('Расстановка отправлена — ждём соперника');
-    startPollingMatch();
-  } else {
-    console.error('place-ships failed', res);
-    updateStatus('Ошибка отправки: ' + (res && res.error ? res.error : 'no response'));
-  }
+findBtn.addEventListener('click', ()=>{
+  initSocket();
+  socket.emit('find_match', { playerId: PLAYER_ID });
+  updateStatus('В поиске...');
 });
 
-// ATTACK (demo: random)
-attackBtn.addEventListener('click', async () => {
-  const x = Math.floor(Math.random() * 10), y = Math.floor(Math.random() * 10);
-  if (modeSelect.value !== 'railway') {
-    updateStatus(`Mock: выстрел в (${x},${y}) — ${Math.random() < 0.3 ? 'hit' : 'miss'}`);
-    return;
-  }
-  if (!currentMatchId) { updateStatus('Нет текущего матча'); return; }
-  updateStatus('Отправка выстрела...');
-  const res = await apiFetch('/shoot', { matchId: currentMatchId, playerId: String(PLAYER_ID), x, y });
-  if (res && res.ok) {
-    updateStatus(`Выстрел в (${x},${y}) — ${res.result || 'ok'}`);
-    if (res.newTurn) { currentTurn = res.newTurn; turnLabel.innerText = String(currentTurn); }
-    if (res.finished) { updateStatus('Матч завершён. Победитель: ' + res.winner); stopPollingMatch(); attackBtn.disabled = true; }
-  } else {
-    console.error('shoot failed', res);
-    updateStatus('Ошибка выстрела: ' + (res && res.error ? res.error : 'no response'));
-  }
+leaveBtn.addEventListener('click', ()=>{
+  if(!socket) initSocket();
+  socket.emit('leave', { playerId: PLAYER_ID, matchId: currentMatchId });
+  currentMatchId = null; matchLabel.innerText = '—';
+  updateStatus('Вышел из матча');
 });
 
-/* ========== Init ========= */
-function initUI() {
+readyBtn.addEventListener('click', ()=>{
+  if(!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
+  initSocket();
+  socket.emit('place_ships', { matchId: currentMatchId, playerId: PLAYER_ID, ships: placed });
+  updateStatus('Расстановка отправлена');
+});
+
+attackBtn.addEventListener('click', ()=>{
+  // здесь рандомный выстрел; можно заменить выбором клетки на enemyField later
+  const x = Math.floor(Math.random()*10), y = Math.floor(Math.random()*10);
+  if(!socket) initSocket();
+  if(!currentMatchId){ updateStatus('Нет матча'); return; }
+  socket.emit('shoot', { matchId: currentMatchId, playerId: PLAYER_ID, x, y });
+  updateStatus('Выстрел отправлен: ' + x + ',' + y);
+});
+
+/* ===== Shop button opens shop (Telegram first, fallback window.open) ===== */
+shopBtn.addEventListener('click', ()=>{
+  const url = SHOP_URL;
+  if(WebApp && WebApp.openLink){
+    try{ WebApp.openLink(url); return; } catch(e){ /* fallthrough */ }
+  }
+  // fallback
+  window.open(url, '_blank');
+});
+
+/* buySkin - demo: open shop */
+buySkinBtn.addEventListener('click', ()=>{ shopBtn.click(); });
+
+/* ====== Init UI ====== */
+function initUI(){
   buildField();
   renderShipsPanel();
   renderAll();
-  modeLabel.innerText = modeSelect.value;
-  updateStatus('Готово');
+  modeLabel.innerText = 'railway';
+  updateStatus('Готово — подключение по Socket.IO');
   dbg.style.display = 'none';
+  attackBtn.disabled = true;
 }
 initUI();
-  
 </script>
 </body>
 </html>

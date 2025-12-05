@@ -674,6 +674,52 @@ initUI();
   renderAll();
 })();
 
+// modal controls
+const shopModal = document.getElementById('shopModal');
+const shopModalContent = document.getElementById('shopModalContent');
+const shopClose = document.getElementById('shopClose');
+const shopModalBuyAll = document.getElementById('shopModalBuyAll');
+
+shopBtn.addEventListener('click', ()=> openShopModal());
+shopClose.addEventListener('click', ()=> closeShopModal());
+shopModalBuyAll.addEventListener('click', ()=> {
+  // fallback open bot / shop link
+  if(WebApp && WebApp.openLink){ try{ WebApp.openLink(SHOP_URL); return; } catch(e){} }
+  window.open(SHOP_URL, '_blank');
+});
+
+function openShopModal(){
+  renderShopModalContent();
+  shopModal.style.display = 'flex';
+}
+function closeShopModal(){
+  shopModal.style.display = 'none';
+}
+
+function renderShopModalContent(){
+  shopModalContent.innerHTML = '';
+  SKINS.forEach(skin=>{
+    const row = document.createElement('div');
+    row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='8px'; row.style.borderRadius='8px';
+    // preview img
+    const img = document.createElement('img'); img.src = skin.parts.head; img.style.width='72px'; img.style.height='44px'; img.style.objectFit='cover'; img.style.borderRadius='6px';
+    row.appendChild(img);
+    const info = document.createElement('div'); info.style.flex='1';
+    info.innerHTML = `<div style="font-weight:700">${skin.name}</div><div class="small">Цена: ${skin.price} stars</div>`;
+    row.appendChild(info);
+    const btn = document.createElement('button'); btn.className='ship-btn';
+    const owned = ownedSkins.includes(skin.id);
+    btn.innerText = owned ? (equippedSkin===skin.id ? 'Надето' : 'Надеть') : 'Купить';
+    btn.onclick = ()=> {
+      if(owned) equipSkinLocal(skin.id);
+      else buySkinRequest(skin.id);
+      renderShopModalContent();
+    };
+    row.appendChild(btn);
+    shopModalContent.appendChild(row);
+  });
+}
+  
 /* ================== Image size recommendation & notes ==================
 
   Рекомендации по подготовке картинок (важно для аккуратной отрисовки):

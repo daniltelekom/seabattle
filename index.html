@@ -112,9 +112,9 @@ body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#
   </div>
 </div>
 
-<script>
+  <script>
 /* ========== Network config: вставь свой URL с https:// в начале ========== */
-const API_URL = "https://seabattle-server-production.up.railway.app"; // <- замени на свой URL
+const API_URL = "https://seastrike-server-production.up.railway.app"; // <- ЗАМЕНИ на свой URL
 
 /* ========== Game State & UI ========= */
 const WebApp = window.Telegram?.WebApp || null;
@@ -264,10 +264,50 @@ function onCellClick(e){
   }
 }
 
+/* ====== Polling helpers (для railway REST) ====== */
+let pollInterval = null;
+async function pollMatchStatus() {
+  if (!currentMatchId) return;
+  try {
+    const url = API_URL + '/match-status?matchId=' + encodeURIComponent(currentMatchId);
+    const resp = await fetch(url, { method: 'GET' });
+    if (!resp.ok) { console.warn('match-status http error', resp.status); return; }
+    const data = await resp.json();
+    if (!data) return;
+    matchLabel.innerText = data.id || currentMatchId;
+    modeLabel.innerText = 'railway';
+    turnLabel.innerText = data.turn || '—';
+    currentTurn = data.turn;
+    if (data.state === 'started' && String(currentTurn) === String(PLAYER_ID)) {
+      attackBtn.disabled = false;
+      updateStatus('Ваш ход');
+    } else if (data.state === 'started') {
+      attackBtn.disabled = true;
+      updateStatus('Ход соперника');
+    } else if (data.state === 'waiting') {
+      updateStatus('Ожидание соперника/готовности');
+      attackBtn.disabled = true;
+    } else if (data.state === 'finished') {
+      attackBtn.disabled = true;
+      updateStatus('Матч завершён');
+      stopPollingMatch();
+    }
+  } catch (e) {
+    console.warn('poll error', e);
+  }
+}
+function startPollingMatch() {
+  stopPollingMatch();
+  pollMatchStatus();
+  pollInterval = setInterval(pollMatchStatus, 2000);
+}
+function stopPollingMatch() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
 /* ========== Railway REST helper (POST) ========= */
 async function apiFetch(path, data = {}){
   try{
-    // ensure path begins with '/'
     const url = API_URL + (path.startsWith('/') ? path : '/' + path);
     const resp = await fetch(url, {
       method: 'POST',
@@ -281,48 +321,120 @@ async function apiFetch(path, data = {}){
   }
 }
 
-/* ========== Matchmaking / Buttons (REST) ========= */
+/* ====== Replace handlers: create/join/find/ready/attack ====== */
+
+// CREATE MATCH
 createMatchBtn.addEventListener('click', async () => {
-  if (modeSelect.value !== 'railway'){ currentMatchId = 'demo-123'; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'mock'; updateStatus('Mock match ready'); return; }
+  if (modeSelect.value !== 'railway') {
+    currentMatchId = 'demo-' + Math.floor(Math.random()*10000);
+    matchLabel.innerText = currentMatchId;
+    modeLabel.innerText = 'mock';
+    updateStatus('Mock match ready: ' + currentMatchId);
+    currentTurn = PLAYER_ID;
+    return;
+  }
+  if (!API_URL || !API_URL.startsWith('http')) {
+    updateStatus('Неверный API_URL — проверь строку с https://');
+    return;
+  }
+  updateStatus('Создаём матч...');
   const res = await apiFetch('/create-match', { playerId: String(PLAYER_ID) });
-  if (res && res.matchId){ currentMatchId = res.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Матч создан: ' + currentMatchId); }
-  else updateStatus('Ошибка создания матча');
+  if (res && res.matchId) {
+    currentMatchId = res.matchId;
+    matchLabel.innerText = currentMatchId;
+    modeLabel.innerText = 'railway';
+    updateStatus('Матч создан: ' + currentMatchId);
+    startPollingMatch();
+  } else {
+    console.error('create-match failed', res);
+    updateStatus('Ошибка создания матча: ' + (res && res.error ? res.error : 'no response'));
+  }
 });
 
+// JOIN MATCH
 joinMatchBtn.addEventListener('click', async () => {
-  const id = matchIdInput.value.trim(); if(!id){ updateStatus('Введите match id'); return; }
-  if (modeSelect.value !== 'railway'){ currentMatchId = id; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'mock'; updateStatus('Joined mock'); return; }
+  const id = matchIdInput.value.trim();
+  if (!id) { updateStatus('Введите match id'); return; }
+  if (modeSelect.value !== 'railway') {
+    currentMatchId = id; matchLabel.innerText = id; modeLabel.innerText = 'mock'; updateStatus('Joined mock'); currentTurn = PLAYER_ID; return;
+  }
+  updateStatus('Присоединяемся к ' + id + '...');
   const res = await apiFetch('/join-match', { matchId: id, playerId: String(PLAYER_ID) });
-  if (res && res.ok){ currentMatchId = id; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Присоединился к ' + id); }
-  else updateStatus(res.error || 'Ошибка join');
+  if (res && res.ok) {
+    currentMatchId = id;
+    matchLabel.innerText = currentMatchId;
+    modeLabel.innerText = 'railway';
+    updateStatus('Успешно присоединился: ' + id);
+    startPollingMatch();
+  } else {
+    console.error('join-match failed', res);
+    updateStatus('Ошибка join: ' + (res && res.error ? res.error : 'no response'));
+  }
 });
 
+// FIND (queue)
 findBtn.addEventListener('click', async () => {
-  if (modeSelect.value !== 'railway'){ updateStatus('Mock: нет поиска'); return; }
+  if (modeSelect.value !== 'railway') { updateStatus('Mock: нет поиска'); return; }
+  updateStatus('В поиске соперника...');
   const res = await apiFetch('/find', { playerId: String(PLAYER_ID) });
-  if (res && res.matchId){ currentMatchId = res.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Найден матч: ' + currentMatchId); }
-  else updateStatus(res.status || 'В поиске...');
+  if (res) {
+    if (res.matchId) {
+      currentMatchId = res.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway';
+      updateStatus('Найден матч: ' + currentMatchId);
+      startPollingMatch();
+    } else {
+      updateStatus(res.status || 'В очереди на поиск...');
+    }
+  } else updateStatus('Ошибка поиска');
 });
 
-leaveBtn.addEventListener('click', async () => {
-  try{ await apiFetch('/leave', { playerId: String(PLAYER_ID), matchId: currentMatchId }); }catch(e){}
-  currentMatchId = null; matchLabel.innerText = '—'; updateStatus('Вышел');
-});
-
+// READY (place ships)
 readyBtn.addEventListener('click', async () => {
-  if (!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
-  if (modeSelect.value !== 'railway'){ updateStatus('Mock: расстановка отправлена'); return; }
+  if (!allPlaced()) { updateStatus('Сначала размести все корабли'); return; }
+
+  if (modeSelect.value !== 'railway') {
+    updateStatus('Mock: расстановка отправлена — ожидаем старт');
+    setTimeout(() => {
+      if (!currentMatchId) currentMatchId = 'demo-' + Math.floor(Math.random()*10000);
+      matchLabel.innerText = currentMatchId;
+      modeLabel.innerText = 'mock';
+      currentTurn = PLAYER_ID;
+      turnLabel.innerText = String(currentTurn);
+      attackBtn.disabled = false;
+      updateStatus('Mock: матч начался — ваш ход');
+    }, 600);
+    return;
+  }
+
+  updateStatus('Отправка расстановки...');
   const res = await apiFetch('/place-ships', { matchId: currentMatchId, playerId: String(PLAYER_ID), ships: placed });
-  if (res && res.ok) updateStatus('Расстановка отправлена');
-  else updateStatus(res.error || 'Ошибка отправки');
+  if (res && res.ok) {
+    updateStatus('Расстановка отправлена — ждём соперника');
+    startPollingMatch();
+  } else {
+    console.error('place-ships failed', res);
+    updateStatus('Ошибка отправки: ' + (res && res.error ? res.error : 'no response'));
+  }
 });
 
+// ATTACK (demo: random)
 attackBtn.addEventListener('click', async () => {
   const x = Math.floor(Math.random()*10), y = Math.floor(Math.random()*10);
-  if (modeSelect.value !== 'railway'){ updateStatus(`Mock: выстрел в (${x},${y}) — ${Math.random()<0.3?'hit':'miss'}`); return; }
+  if (modeSelect.value !== 'railway') {
+    updateStatus(`Mock: выстрел в (${x},${y}) — ${Math.random()<0.3 ? 'hit' : 'miss'}`);
+    return;
+  }
+  if (!currentMatchId) { updateStatus('Нет текущего матча'); return; }
+  updateStatus('Отправка выстрела...');
   const res = await apiFetch('/shoot', { matchId: currentMatchId, playerId: String(PLAYER_ID), x, y });
-  if (res && res.ok) updateStatus(`Выстрел в (${x},${y}) — ${res.result || (res.error?'error:'+res.error:'ok')}`);
-  else updateStatus('Ошибка выстрела');
+  if (res && res.ok) {
+    updateStatus(`Выстрел в (${x},${y}) — ${res.result || 'ok'}`);
+    if (res.newTurn) { currentTurn = res.newTurn; turnLabel.innerText = String(currentTurn); }
+    if (res.finished) { updateStatus('Матч завершён. Победитель: ' + res.winner); stopPollingMatch(); attackBtn.disabled = true; }
+  } else {
+    console.error('shoot failed', res);
+    updateStatus('Ошибка выстрела: ' + (res && res.error ? res.error : 'no response'));
+  }
 });
 
 /* ========== Init ========= */

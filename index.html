@@ -16,8 +16,11 @@
       --bg:#e9f4ff;
       --card:#fff;
       --cell:#e8f3ff;
+      --miss:#eceff1;
       --hit:#f44336;
       --occupied:#2b9cff;
+      --pending:#ffd54f;
+      --sunk:#b71c1c;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#072146;display:flex;flex-direction:column;gap:10px;min-height:100vh}
@@ -25,11 +28,15 @@
     .panel{background:var(--card);padding:10px;border-radius:12px;box-shadow:0 6px 18px rgba(2,20,60,0.06)}
     .layout{display:grid;grid-template-columns:1fr 320px;gap:12px}
     @media (max-width:920px){ .layout{grid-template-columns:1fr} }
-    .field-wrap{display:flex;justify-content:center;align-items:flex-start}
-    .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;touch-action:manipulation;width:100%}
+    .field-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+    .big-grid{width:100%;max-width:560px;display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+    .small-grid{width:260px;display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
     .cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none}
     .cell.occupied{background:var(--occupied);color:white}
+    .cell.miss{background:var(--miss)}
     .cell.hit{background:var(--hit);color:white}
+    .cell.pending{background:var(--pending)}
+    .cell.sunk{background:var(--sunk);color:white}
     .ships-panel{display:flex;flex-wrap:wrap;gap:8px}
     .ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;border:none;min-width:42px}
     .ship-btn.selected{outline:3px solid #ffca28}
@@ -41,15 +48,15 @@
     .shop-btn{background:linear-gradient(90deg,#ffb74d,#ff8a65);border:none;color:#fff;padding:8px 10px;border-radius:8px}
     input, select{padding:8px;border-radius:8px;border:1px solid #ddd}
     .compact{font-size:12px}
-    /* make grid tall on small screens so user doesn't need to scroll down */
-    #boardContainer{width:100%;max-width:560px;display:flex;justify-content:center}
+    .label-muted{font-size:12px;color:#607d8b}
+    .enemy-title{font-weight:700;margin-bottom:6px}
   </style>
 </head>
 <body>
   <div class="header">
     <div>
       <h2>SeaStrike — MiniApp</h2>
-      <div class="small">Классический морской бой. Играй с другом или в поиск.</div>
+      <div class="small">Классический морской бой — кликай по полю противника, чтобы стрелять.</div>
     </div>
     <div class="small">PlayerID: <span id="playerIdLabel">—</span></div>
   </div>
@@ -64,14 +71,20 @@
         </div>
       </div>
 
-      <div id="fieldWrap" class="field-wrap" style="margin-top:12px">
-        <div id="boardContainer">
-          <div id="myField" class="grid" aria-label="Поле игрока"></div>
+      <div id="fieldArea" class="field-wrap" style="margin-top:12px">
+        <div>
+          <div class="enemy-title">Поле противника (клик — стрелять)</div>
+          <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="label-muted">Ваше поле</div>
+          <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
         </div>
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-        <div id="status" class="small">Выберите корабль и тапните по полю</div>
+        <div id="status" class="small">Расставьте корабли и нажмите Готов.</div>
         <div style="display:flex;gap:8px">
           <button id="undoBtn" class="ship-btn">↶ Отменить</button>
           <button id="eraseModeBtn" class="ship-btn">Удаление: выкл</button>
@@ -124,24 +137,25 @@
       <div class="info">Поддержка: Railway (онлайн)</div>
       <div style="display:flex;gap:8px">
         <button id="readyBtn" class="ship-btn">✅ Готов</button>
-        <button id="attackBtn" class="ship-btn" disabled>Атаковать</button>
+        <button id="resignBtn" class="ship-btn">Сдаться</button>
       </div>
     </div>
   </div>
 
 <script>
-/* ====== Конфигурация (вставь сюда свои ссылки) ====== */
-const SOCKET_URL = "https://seabattlehttpver-production.up.railway.app"; // <- обязателен протокол https://
-const SHOP_URL = "https://t.me/YourBotOrShop"; // <- подставь сюда ссылку на бота/магазин или страницу магазина
+/* ====== Конфигурация (вставь свои ссылки) ====== */
+const SOCKET_URL = "https://seabattle-server-production.up.railway.app"; // <- обязателен протокол https://
+const SHOP_URL = "https://t.me/YourBotOrShop"; // <- ссылка на бота или магазин
 
-/* ====== Инициализация игрока (Telegram WebApp если есть) ====== */
+/* ====== Инициализация игрока ====== */
 const WebApp = window.Telegram?.WebApp || null;
 const initUser = WebApp?.initDataUnsafe?.user || { id: Math.floor(Math.random()*1e6), username: 'local_test' };
 const PLAYER_ID = String(initUser.id);
 const PLAYER_NAME = initUser.username || ('p' + PLAYER_ID);
 document.getElementById('playerIdLabel').innerText = PLAYER_ID;
 
-/* ====== UI refs ====== */
+/* ====== Refs ====== */
+const enemyField = document.getElementById('enemyField');
 const myField = document.getElementById('myField');
 const shipsPanel = document.getElementById('shipsPanel');
 const rotateBtn = document.getElementById('rotateBtn');
@@ -149,7 +163,7 @@ const autoBtn = document.getElementById('autoBtn');
 const undoBtn = document.getElementById('undoBtn');
 const eraseModeBtn = document.getElementById('eraseModeBtn');
 const readyBtn = document.getElementById('readyBtn');
-const attackBtn = document.getElementById('attackBtn');
+const resignBtn = document.getElementById('resignBtn');
 const statusEl = document.getElementById('status');
 const createMatchBtn = document.getElementById('createMatchBtn');
 const joinMatchBtn = document.getElementById('joinMatchBtn');
@@ -164,18 +178,20 @@ const buySkinBtn = document.getElementById('buySkinBtn');
 const dbg = document.getElementById('dbg');
 const ratingLabel = document.getElementById('ratingLabel');
 
-/* ====== Game state & placement logic ====== */
+let socket = null;
+let currentMatchId = null;
+let currentTurn = null;
+
+/* ====== Placement logic (same as before) ====== */
 const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
 function group(arr){ const out={}; arr.forEach(s=>out[s]=(out[s]||0)+1); return out; }
-
 let shipsPool = group(SHIP_SIZES);
-let placed = []; // ships placed
+let placed = [];
 let nextShipId = 1;
 let selectedSize = null;
 let orientation = 'H';
 let eraseMode = false;
 
-/* ====== Helpers ====== */
 function logDbg(msg){ if(!dbg) return; dbg.style.display='block'; try{ dbg.innerText = typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2); }catch(e){ dbg.innerText = String(msg); } }
 function coords(idx){ return { x: idx % 10, y: Math.floor(idx / 10) }; }
 function cellIndex(x,y){ return y*10 + x; }
@@ -188,14 +204,26 @@ function cellsFor(start,size,orient){
 function adjacentCellsOf(c){ const {x,y}=coords(c); const out=[]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const nx=x+dx, ny=y+dy; if(nx>=0&&nx<10&&ny>=0&&ny<10) out.push(cellIndex(nx,ny)); } return out; }
 function overlapsOrAdjacent(cells){ const occ = new Set(placed.flatMap(s=>s.cells)); for(const c of cells){ if(occ.has(c)) return {overlap:true}; for(const n of adjacentCellsOf(c)) if(occ.has(n)) return {adjacent:true,at:n}; } return null; }
 
-function buildField(){
-  myField.innerHTML='';
+function buildFields(){
+  // enemyField (big)
+  enemyField.innerHTML = '';
   for(let i=0;i<100;i++){
     const c = document.createElement('div');
     c.className = 'cell';
     c.dataset.idx = i;
-    c.addEventListener('click', onCellClick);
-    c.addEventListener('touchend', function(e){ e.preventDefault(); onCellClick.call(this,e); });
+    // click on enemy cell -> shoot (only when started and it's your turn)
+    c.addEventListener('click', onEnemyClick);
+    c.addEventListener('touchend', function(e){ e.preventDefault(); onEnemyClick.call(this,e); });
+    enemyField.appendChild(c);
+  }
+  // myField (small)
+  myField.innerHTML = '';
+  for(let i=0;i<100;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.idx = i;
+    c.addEventListener('click', onMyCellClick);
+    c.addEventListener('touchend', function(e){ e.preventDefault(); onMyCellClick.call(this,e); });
     myField.appendChild(c);
   }
 }
@@ -217,7 +245,7 @@ function renderShipsPanel(){
 }
 
 function renderAll(){
-  document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit'); c.textContent=''; });
+  document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit','miss','pending','sunk'); c.textContent=''; });
   placed.forEach(s => s.cells.forEach((ci,i)=>{ const el = myField.children[ci]; if(!el) return; el.classList.add('occupied'); if(i===0) el.textContent = s.size; }));
   renderShipsPanel();
   readyBtn.disabled = !allPlaced();
@@ -239,6 +267,7 @@ function placeShipAt(startIdx,size,orient){
 }
 function findShipByCell(idx){ return placed.find(s=>s.cells.includes(idx)); }
 function removeShipById(id){ const i = placed.findIndex(s=>s.id===id); if(i===-1) return false; const s = placed[i]; shipsPool[s.size] = (shipsPool[s.size]||0)+1; placed.splice(i,1); renderAll(); return true; }
+
 function updateStatus(msg){
   if(msg){ statusEl.innerText = msg; logDbg(msg); return; }
   if(allPlaced()) statusEl.innerText = 'Все корабли расставлены — нажми Готов';
@@ -246,10 +275,9 @@ function updateStatus(msg){
   else statusEl.innerText = 'Выберите корабль';
 }
 
-/* ===== UI handlers (placement controls) ===== */
-function onCellClick(e){
-  const el = e.currentTarget || this;
-  const idx = parseInt(el.dataset.idx);
+/* ====== Placement UI handlers ====== */
+function onMyCellClick(e){
+  const el = e.currentTarget || this; const idx = parseInt(el.dataset.idx);
   if(eraseMode){ const ship = findShipByCell(idx); if(ship){ removeShipById(ship.id); updateStatus('Корабль удалён'); } else updateStatus('Нет корабля'); return; }
   if(!selectedSize){ updateStatus('Выберите корабль'); return; }
   const res = placeShipAt(idx, selectedSize, orientation);
@@ -262,67 +290,115 @@ autoBtn.addEventListener('click', ()=>{ randomPlaceAll(); updateStatus('Авто
 undoBtn.addEventListener('click', ()=>{ if(placed.length===0){ updateStatus('Нечего отменять'); return; } const last = placed.pop(); shipsPool[last.size] = (shipsPool[last.size]||0) + 1; renderAll(); updateStatus('Отменён последний'); });
 eraseModeBtn.addEventListener('click', ()=>{ eraseMode = !eraseMode; eraseModeBtn.innerText = `Удаление: ${eraseMode ? 'вкл' : 'выкл'}`; });
 
-function clearAll(){ placed=[]; shipsPool = group(SHIP_SIZES); nextShipId = 1; selectedSize = null; orientation = 'H'; eraseMode = false; eraseModeBtn.innerText='Удаление: выкл'; renderAll(); }
+function clearAll(){ placed=[]; shipsPool = group(SHIP_SIZES); nextShipId = 1; selectedSize=null; orientation='H'; eraseMode=false; eraseModeBtn.innerText='Удаление: выкл'; renderAll(); }
 function randomPlaceAll(){ clearAll(); const sizes=[...SHIP_SIZES].sort(()=>Math.random()-0.5); for(const s of sizes){ let tries=0,ok=false; while(tries<500&&!ok){ const start=Math.floor(Math.random()*100); const orient=Math.random()<0.5?'H':'V'; const cells=cellsFor(start,s,orient); if(cells && !overlapsOrAdjacent(cells)){ placed.push({ id: nextShipId++, size: s, start, orientation: orient, cells }); shipsPool[s] = (shipsPool[s]||0)-1; ok=true; } tries++; } if(!ok) return randomPlaceAll(); } renderAll(); }
 
-/* ===== Socket.IO client ===== */
-let socket = null;
+/* ====== Enemy clicks -> send shoot ====== */
+function onEnemyClick(e){
+  const el = e.currentTarget || this;
+  const idx = parseInt(el.dataset.idx);
+  if(!currentMatchId){ updateStatus('Нет матча — создай или присоединяйся'); return; }
+  if(!currentTurn || String(currentTurn) !== String(PLAYER_ID)){ updateStatus('Сейчас не ваш ход'); return; }
+  // if already shot here, ignore
+  if(el.classList.contains('miss') || el.classList.contains('hit') || el.classList.contains('sunk') || el.classList.contains('pending')){ updateStatus('Вы уже стреляли сюда'); return; }
+  // send shot
+  const { x, y } = coords(idx);
+  if(!socket) initSocket();
+  socket.emit('shoot', { matchId: currentMatchId, playerId: PLAYER_ID, x, y });
+  // mark pending
+  el.classList.add('pending');
+  updateStatus(`Выстрел: ${x},${y} — ждём ответа`);
+}
+
+/* ====== Socket.IO integration ====== */
 function initSocket(){
   if(socket) return;
   if(!SOCKET_URL || !SOCKET_URL.startsWith('http')){ updateStatus('Неправильный SOCKET_URL'); return; }
   socket = io(SOCKET_URL, { transports: ['websocket'] });
 
   socket.on('connect', ()=>{ logDbg('socket connected: ' + socket.id); socket.emit('identify', { playerId: PLAYER_ID, username: PLAYER_NAME }); });
-  socket.on('connect_error', (err) => { logDbg('connect_error: ' + (err && err.message ? err.message : err)); });
-  socket.on('disconnect', (reason) => { logDbg('disconnect: ' + reason); });
+  socket.on('connect_error', (err)=>{ logDbg('connect_error: ' + (err && err.message ? err.message : err)); });
+  socket.on('disconnect', (reason)=>{ logDbg('disconnect: ' + reason); });
 
-  socket.on('identified', d => logDbg('identified ok'));
+  socket.on('identified', d=> logDbg('identified ok'));
 
-  socket.on('match_created', d => {
-    currentMatchId = d.matchId;
-    matchLabel.innerText = currentMatchId;
-    modeLabel.innerText = 'railway';
-    updateStatus('Матч создан: ' + currentMatchId);
+  socket.on('match_created', d=>{
+    currentMatchId = d.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Матч создан: ' + currentMatchId);
   });
 
-  socket.on('match_joined', d => {
-    currentMatchId = d.matchId;
-    matchLabel.innerText = currentMatchId;
-    modeLabel.innerText = 'railway';
-    updateStatus('Присоединился: ' + currentMatchId);
+  socket.on('match_joined', d=>{
+    currentMatchId = d.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('В матче: ' + currentMatchId);
   });
 
-  socket.on('match_found', d => {
-    currentMatchId = d.matchId;
-    matchLabel.innerText = currentMatchId;
-    modeLabel.innerText = 'railway';
-    updateStatus('Найден матч: ' + currentMatchId);
+  socket.on('match_found', d=>{
+    currentMatchId = d.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Найден матч: ' + currentMatchId);
   });
 
-  socket.on('placement_update', d => updateStatus('Противник отправил расстановку'));
+  socket.on('placement_update', d=> updateStatus('Противник отправил расстановку'));
 
-  socket.on('match_started', d => {
+  socket.on('match_started', d=>{
     currentMatchId = d.matchId;
     currentTurn = d.turn;
     turnLabel.innerText = String(currentTurn);
     updateStatus('Матч начался — ход: ' + d.turn);
-    attackBtn.disabled = String(currentTurn) !== String(PLAYER_ID);
+    attackReadyUI(d); // show/hide relevant UI
   });
 
-  socket.on('shot_result', d => {
-    updateStatus(`Результат: ${d.result} (${d.x},${d.y})`);
-    currentTurn = d.newTurn;
-    turnLabel.innerText = String(currentTurn || '—');
-    attackBtn.disabled = String(currentTurn) !== String(PLAYER_ID);
-    if(d.finished){ updateStatus('Матч завершён. Победитель: ' + d.winner); attackBtn.disabled = true; }
+  // shot_result broadcasted to both players:
+  // d: { matchId, shooter, x, y, result: 'miss'|'hit'|'sunk', sunkShipId?, finished?, winner?, newTurn }
+  socket.on('shot_result', d=>{
+    try{
+      // if shooter is me -> update enemyField cell
+      const idx = cellIndex(d.x, d.y);
+      if(String(d.shooter) === String(PLAYER_ID)){
+        const cell = enemyField.children[idx];
+        if(cell){
+          cell.classList.remove('pending');
+          if(d.result === 'miss') cell.classList.add('miss');
+          else if(d.result === 'hit') cell.classList.add('hit');
+          else if(d.result === 'sunk') cell.classList.add('sunk');
+        }
+      } else {
+        // opponent shot at me -> update myField
+        const cell = myField.children[idx];
+        if(cell){
+          if(d.result === 'miss') cell.classList.add('miss');
+          else if(d.result === 'hit') cell.classList.add('hit');
+          else if(d.result === 'sunk') cell.classList.add('sunk');
+        }
+      }
+
+      // update turn and UI
+      currentTurn = d.newTurn;
+      turnLabel.innerText = String(currentTurn || '—');
+      updateStatus(`Результат: ${d.result} (${d.x},${d.y})`);
+
+      if(d.finished){
+        updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
+        // disable clicks
+      }
+    } catch(e){ console.error(e); logDbg(e); }
   });
 
-  socket.on('match_finished', d => { updateStatus('Матч завершён. Победитель: ' + (d.winner || '—')); attackBtn.disabled = true; });
-  socket.on('player_left', d => updateStatus('Игрок ушёл: ' + d.playerId));
-  socket.on('error', e => logDbg('server error: ' + JSON.stringify(e)));
+  socket.on('match_finished', d=>{ updateStatus('Матч завершён. Победитель: ' + (d.winner || '—')); });
+
+  socket.on('player_left', d=> updateStatus('Игрок ушёл: ' + d.playerId) );
+
+  socket.on('error', e=> logDbg('server error: ' + JSON.stringify(e)) );
 }
 
-/* ===== Buttons -> socket emits ===== */
+/* helper to toggle UI when match starts */
+function attackReadyUI(d){
+  // When match starts, enemyField must be visible (it's always visible here),
+  // but we just notify whether it's your turn.
+  enemyField.querySelectorAll('.cell').forEach(c=> c.classList.remove('pending','miss','hit','sunk'));
+  myField.querySelectorAll('.cell').forEach(c=> c.classList.remove('pending','miss','hit','sunk'));
+  // mark your own ships on myField (we already do that)
+  attackAllowed = (String(d.turn) === String(PLAYER_ID));
+  updateStatus(attackAllowed ? 'Ваш ход — кликай по полю врага' : 'Ход соперника — ожидайте');
+}
+
+/* ====== Buttons -> socket emits ====== */
 createMatchBtn.addEventListener('click', ()=>{
   initSocket();
   socket.emit('create_match', { playerId: PLAYER_ID });
@@ -357,39 +433,33 @@ readyBtn.addEventListener('click', ()=>{
   updateStatus('Расстановка отправлена');
 });
 
-attackBtn.addEventListener('click', ()=>{
-  // здесь рандомный выстрел; можно заменить выбором клетки на enemyField later
-  const x = Math.floor(Math.random()*10), y = Math.floor(Math.random()*10);
+resignBtn.addEventListener('click', ()=>{
   if(!socket) initSocket();
-  if(!currentMatchId){ updateStatus('Нет матча'); return; }
-  socket.emit('shoot', { matchId: currentMatchId, playerId: PLAYER_ID, x, y });
-  updateStatus('Выстрел отправлен: ' + x + ',' + y);
+  socket.emit('resign', { matchId: currentMatchId, playerId: PLAYER_ID });
+  updateStatus('Вы сдались');
 });
 
-/* ===== Shop button opens shop (Telegram first, fallback window.open) ===== */
+/* Shop button */
 shopBtn.addEventListener('click', ()=>{
   const url = SHOP_URL;
   if(WebApp && WebApp.openLink){
-    try{ WebApp.openLink(url); return; } catch(e){ /* fallthrough */ }
+    try{ WebApp.openLink(url); return; } catch(e){ /* fallback */ }
   }
-  // fallback
   window.open(url, '_blank');
 });
-
-/* buySkin - demo: open shop */
-buySkinBtn.addEventListener('click', ()=>{ shopBtn.click(); });
+buySkinBtn.addEventListener('click', ()=> shopBtn.click() );
 
 /* ====== Init UI ====== */
 function initUI(){
-  buildField();
+  buildFields();
   renderShipsPanel();
   renderAll();
   modeLabel.innerText = 'railway';
-  updateStatus('Готово — подключение по Socket.IO');
+  updateStatus('Готово — подключись к матчу');
   dbg.style.display = 'none';
-  attackBtn.disabled = true;
 }
 initUI();
+
 </script>
 </body>
 </html>

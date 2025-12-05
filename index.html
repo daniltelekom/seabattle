@@ -113,6 +113,7 @@ body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#
 </div>
 
 <script>
+  src="https://cdn.socket.io/4.7.2/socket.io.min.js"
 /* ========== Game State & UI ========= */
 const WebApp = window.Telegram?.WebApp || null;
 const initUser = WebApp?.initDataUnsafe?.user || { id: Math.floor(Math.random()*1e6), username:'local_test' };

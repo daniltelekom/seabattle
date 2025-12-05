@@ -2,8 +2,8 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SeaStrike — Placement v2 (Mobile)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>SeaStrike — Placement fixed (touch)</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -14,11 +14,12 @@
     .btn.secondary{background:#90a4ae}
     .panel{background:#fff;padding:10px;border-radius:10px;box-shadow:0 4px 10px rgba(3,27,66,0.06)}
     .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-top:12px}
-    .cell{aspect-ratio:1;background:#e8f3ff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b3d91;user-select:none}
+    .cell{aspect-ratio:1;background:#e8f3ff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b3d91;user-select:none;touch-action:manipulation}
     .cell.occupied{background:#90caf9}
     .cell.bad{background:#ffcdd2}
     .ships-panel{display:flex;flex-wrap:wrap;gap:8px}
-    .ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;font-weight:700;cursor:pointer;min-width:44px;text-align:center}
+    /* Сделаем реальные кнопки — они надёжней работают на мобильных */
+    .ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;font-weight:700;cursor:pointer;min-width:44px;text-align:center;border:none}
     .ship-btn.selected{outline:3px solid #ffca28}
     .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
     .rules{font-size:13px;color:#263238;margin-top:8px}
@@ -28,15 +29,17 @@
       .cell{font-size:11px}
       .ship-btn{min-width:34px;padding:6px}
     }
+    /* небольшой отладочный блок (скрываем, если не нужно) */
+    #dbg { position:fixed; right:8px; bottom:8px; background:rgba(0,0,0,0.6); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px; z-index:9999 }
   </style>
 </head>
 <body>
-  <h2>SeaStrike — расстановка кораблей</h2>
+  <h2>SeaStrike — расстановка (фикс для touch)</h2>
 
   <div class="panel">
     <div class="row">
       <div style="flex:1">
-        <div class="ships-panel" id="shipsPanel"></div>
+        <div class="ships-panel" id="shipsPanel" aria-label="Панель кораблей"></div>
         <div class="controls">
           <button class="btn secondary" id="rotateBtn">Повернуть (H)</button>
           <button class="btn secondary" id="autoBtn">🔀 Авто</button>
@@ -44,17 +47,17 @@
           <button class="btn secondary" id="eraseModeBtn">🧽 Режим удаления: выкл</button>
         </div>
         <div class="rules" id="rules">
-          <b>Правила:</b> Ставь корабли горизонтально (H) или вертикально (V). Корабли не должны перекрываться и не выходят за поле. Соседство разрешено. Набор: 1×4, 2×3, 3×2, 4×1. На мобильных: тапни на корабль в панели → тапни по клетке поля, чтобы поставить. Чтобы удалить — включи режим удаления и тапни по кораблю.
+          <b>Правила:</b> Набор: 1×4, 2×3, 3×2, 4×1. Тапни по кораблю в панели → тапни по клетке поля. Повернуть — кнопка. Удаление через режим удаления.
         </div>
       </div>
       <div style="width:220px;margin-left:12px">
-        <div style="font-size:13px">Ход / статус</div>
+        <div style="font-size:13px">Статус</div>
         <div id="status" class="panel">Готовь расстановку</div>
       </div>
     </div>
 
     <div style="margin-top:12px" id="myFieldContainer">
-      <div class="grid" id="myField"></div>
+      <div class="grid" id="myField" aria-label="Игровое поле"></div>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -63,36 +66,43 @@
     </div>
   </div>
 
+  <div id="dbg" style="display:none">DBG</div>
+
   <script>
-    // ---------------- Telegram init (fallback local test) ----------------
+    // --- init Telegram fallback ---
     const WebApp = window.Telegram?.WebApp || null;
     const initUser = WebApp?.initDataUnsafe?.user || { id: 12345, username: 'local_test' };
     const userId = initUser.id;
-    if (WebApp) try { WebApp.expand?.(); } catch(e){ console.warn(e); }
+    try { if (WebApp) WebApp.expand?.(); } catch(e){ console.warn(e); }
 
-    // ---------------- Data: ship set ----------------
-    // Мы используем набор: 1x4, 2x3, 3x2, 4x1 (всего 10 кораблей, 20 клеток)
+    // --- safety: show runtime errors in status for mobile debugging ---
+    const statusEl = document.getElementById('status');
+    window.addEventListener('error', e => {
+      console.error('JS error', e.error || e.message);
+      statusEl.textContent = 'Error: ' + (e.error?.message || e.message || 'unknown');
+      const dbg = document.getElementById('dbg');
+      dbg.style.display = 'block';
+      dbg.textContent = (e.error?.message || e.message || 'err').slice(0,120);
+    });
+    window.addEventListener('unhandledrejection', ev => {
+      console.error('Promise rejection', ev.reason);
+      statusEl.textContent = 'Promise rejection: ' + (ev.reason?.message || String(ev.reason)).slice(0,80);
+    });
+
+    // ---- ship set ----
     const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
-    // Для удобства группируем в объект {size: count}
-    function groupSizes(arr){
-      const out = {};
-      arr.forEach(s => out[s] = (out[s] || 0) + 1);
-      return out;
-    }
-    let shipsPool = groupSizes(SHIP_SIZES); // remaining counts
-    // Placed ships list: {id, size, startIdx, orientation: 'H'|'V', cells: []}
-    let placed = [];
+    function groupSizes(arr){ const out = {}; arr.forEach(s => out[s] = (out[s] || 0) + 1); return out; }
+    let shipsPool = groupSizes(SHIP_SIZES);
+    let placed = []; // placed ships
     let nextShipId = 1;
-
-    // UI state
-    let selectedSize = null; // текущий выбранный корабль длины
+    let selectedSize = null;
     let orientation = 'H';
     let eraseMode = false;
 
-    // Worker / mockFetch (как раньше)
+    // worker fallback (same as раньше)
     let worker = null;
-    try { worker = new Worker('mock-worker.js'); } catch(e){ worker = null; console.warn('Worker not created, fallback used'); }
-    function mockFetch(path, data = {}){
+    try { worker = new Worker('mock-worker.js'); } catch(e){ worker = null; }
+    function mockFetch(path, data = {}) {
       if (worker) {
         return new Promise(resolve=>{
           const url = 'http://mock' + path;
@@ -101,9 +111,10 @@
             else if (e.data && e.data.error){ resolve(e.data); worker.removeEventListener('message', onMsg); }
           };
           worker.addEventListener('message', onMsg);
-          worker.postMessage({ url: url, method: 'POST', body: data });
+          worker.postMessage({ url, method:'POST', body: data });
         });
       } else {
+        // minimal endpoints for placement flow
         const endpoints = {
           '/match/random/join': ()=>({ status:'matched', match_id:'demo-123', opponent_id:999999, is_your_turn:true }),
           '/match/demo-123/place-ships': ()=>({ status:'ok' }),
@@ -113,7 +124,7 @@
       }
     }
 
-    // ---------------- Build UI ----------------
+    // --- UI build ---
     const myField = document.getElementById('myField');
     const shipsPanel = document.getElementById('shipsPanel');
     const rotateBtn = document.getElementById('rotateBtn');
@@ -121,7 +132,8 @@
     const undoBtn = document.getElementById('undoBtn');
     const eraseModeBtn = document.getElementById('eraseModeBtn');
     const readyBtn = document.getElementById('readyBtn');
-    const statusEl = document.getElementById('status');
+    const backBtn = document.getElementById('backBtn');
+    const dbg = document.getElementById('dbg');
 
     function buildField(){
       myField.innerHTML = '';
@@ -129,39 +141,38 @@
         const c = document.createElement('div');
         c.className = 'cell';
         c.dataset.idx = i;
-        // use click/tap for mobile; also support desktop click
+        // support both click and touchend reliably
         c.addEventListener('click', onCellClick);
+        c.addEventListener('touchend', function(e){ e.preventDefault(); onCellClick.call(this, e); });
         myField.appendChild(c);
       }
     }
 
     function renderShipsPanel(){
       shipsPanel.innerHTML = '';
-      const grouped = groupSizes(SHIP_SIZES);
-      // unique sizes sorted desc
       const unique = Array.from(new Set(SHIP_SIZES)).sort((a,b)=>b-a);
-      unique.forEach(size=>{
-        const countTotal = grouped[size];
+      unique.forEach(size => {
         const countLeft = shipsPool[size] || 0;
-        const btn = document.createElement('div');
+        const btn = document.createElement('button');
         btn.className = 'ship-btn' + (selectedSize===size ? ' selected' : '');
+        btn.type = 'button';
         btn.innerText = `${size} × ${countLeft}`;
         btn.dataset.size = size;
-        btn.addEventListener('click', ()=> {
-          if (countLeft <= 0) return;
-          // select this ship size (toggle)
+        // click & touch support
+        const handler = (ev) => {
+          ev.preventDefault();
+          if (countLeft <= 0) { statusEl.textContent = 'Нет таких кораблей'; return; }
           selectedSize = (selectedSize === size) ? null : size;
           renderShipsPanel();
           updateStatus();
-        });
+        };
+        btn.addEventListener('click', handler);
+        btn.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); });
         shipsPanel.appendChild(btn);
       });
     }
 
-    function cellCoords(idx){
-      return { x: idx % 10, y: Math.floor(idx/10) };
-    }
-
+    function cellCoords(idx){ return { x: idx % 10, y: Math.floor(idx/10) }; }
     function cellsForPlacement(startIdx, size, orient){
       const {x,y} = cellCoords(startIdx);
       const cells = [];
@@ -180,17 +191,12 @@
       }
       return cells;
     }
-
-    function overlaps(cells){
-      const occupied = new Set(placed.flatMap(s => s.cells));
-      return cells.some(c => occupied.has(c));
-    }
+    function overlaps(cells){ const occupied = new Set(placed.flatMap(s => s.cells)); return cells.some(c => occupied.has(c)); }
 
     function placeShipAt(startIdx, size, orient){
       const cells = cellsForPlacement(startIdx, size, orient);
-      if (!cells) return { ok:false, reason: 'out' };
-      if (overlaps(cells)) return { ok:false, reason: 'overlap' };
-      // place
+      if (!cells) return { ok:false, reason:'out' };
+      if (overlaps(cells)) return { ok:false, reason:'overlap' };
       const ship = { id: nextShipId++, size, startIdx, orientation: orient, cells };
       placed.push(ship);
       shipsPool[size] = (shipsPool[size] || 0) - 1;
@@ -198,134 +204,101 @@
       return { ok:true, ship };
     }
 
-    function removeShipById(id){
-      const idx = placed.findIndex(s=>s.id===id);
-      if (idx === -1) return false;
-      const s = placed[idx];
-      shipsPool[s.size] = (shipsPool[s.size] || 0) + 1;
-      placed.splice(idx,1);
-      renderAll();
-      return true;
-    }
-
-    function findShipByCell(idx){
-      return placed.find(s => s.cells.includes(idx));
-    }
+    function findShipByCell(idx){ return placed.find(s => s.cells.includes(idx)); }
+    function removeShipById(id){ const idx = placed.findIndex(s => s.id === id); if (idx === -1) return false; const s = placed[idx]; shipsPool[s.size] = (shipsPool[s.size] || 0) + 1; placed.splice(idx,1); renderAll(); return true; }
 
     function renderAll(){
-      // clear
-      document.querySelectorAll('#myField .cell').forEach(c => {
-        c.classList.remove('occupied','bad');
-        c.textContent = '';
-      });
-      // draw placed ships
+      document.querySelectorAll('#myField .cell').forEach(c => { c.classList.remove('occupied','bad'); c.textContent = ''; });
       placed.forEach(s => {
-        s.cells.forEach((ci, i) => {
+        s.cells.forEach((ci,i) => {
           const el = myField.children[ci];
           if (!el) return;
           el.classList.add('occupied');
-          // label with size for first cell (small visual)
           if (i===0) el.textContent = s.size;
         });
       });
-      // update ships panel & ready button
       renderShipsPanel();
       readyBtn.disabled = !allPlaced();
       updateStatus();
     }
 
-    function allPlaced(){
-      // all ships placed when pool counts are zero for every size
-      return Object.values(shipsPool).every(v => v===0);
-    }
+    function allPlaced(){ return Object.values(shipsPool).every(v => v === 0); }
 
     function updateStatus(msg){
       if (msg) { statusEl.textContent = msg; return; }
       if (allPlaced()) statusEl.textContent = 'Все корабли расставлены — нажми Готово';
-      else if (selectedSize) statusEl.textContent = `Выбрано: корабль длины ${selectedSize} (ориентация ${orientation})`;
-      else statusEl.textContent = 'Выбери корабль в панели и тапни по полю, чтобы поставить';
+      else if (selectedSize) statusEl.textContent = `Выбрано: ${selectedSize} (ориентация ${orientation})`;
+      else statusEl.textContent = 'Выбери корабль в панели и тапни по полю';
     }
 
-    // ---------------- Handlers ----------------
-    function onCellClick(e){
-      const idx = parseInt(e.currentTarget.dataset.idx);
+    // handlers
+    function onCellClick(ev){
+      // ev.currentTarget or this
+      const el = ev.currentTarget || this;
+      const idx = parseInt(el.dataset.idx);
       if (eraseMode){
         const ship = findShipByCell(idx);
-        if (ship) {
-          removeShipById(ship.id);
-          updateStatus('Корабль удалён');
-        } else updateStatus('По этой клетке нет корабля');
+        if (ship){ removeShipById(ship.id); updateStatus('Корабль удалён'); }
+        else updateStatus('По этой клетке нет корабля');
         return;
       }
-      if (!selectedSize){
-        updateStatus('Сначала выберите корабль в панели');
-        return;
-      }
+      if (!selectedSize){ updateStatus('Сначала выбери корабль'); return; }
       const res = placeShipAt(idx, selectedSize, orientation);
       if (!res.ok){
-        if (res.reason === 'out') updateStatus('Корабль не влезает в сторону ' + orientation);
-        else if (res.reason === 'overlap') updateStatus('Наложение на другой корабль — выбери другое место');
+        if (res.reason === 'out') updateStatus('Не влезает в выбранную ориентацию');
+        else if (res.reason === 'overlap') updateStatus('Наложение — выбери другое место');
+        else updateStatus('Невозможно поставить');
       } else {
         updateStatus('Корабль поставлен');
-        // если больше нет таких кораблей — сброс выбора
         if ((shipsPool[selectedSize] || 0) <= 0) selectedSize = null;
       }
     }
 
     rotateBtn.addEventListener('click', ()=>{
-      orientation = (orientation === 'H') ? 'V' : 'H';
+      orientation = (orientation==='H') ? 'V' : 'H';
       rotateBtn.innerText = `Повернуть (${orientation})`;
       updateStatus();
     });
+    rotateBtn.addEventListener('touchend', e => { e.preventDefault(); rotateBtn.click(); });
 
-    autoBtn.addEventListener('click', ()=>{
-      randomPlaceAll();
-      updateStatus('Авто-расстановка выполнена');
-    });
+    autoBtn.addEventListener('click', ()=>{ randomPlaceAll(); updateStatus('Авто-расстановка'); });
+    autoBtn.addEventListener('touchend', e=>{ e.preventDefault(); autoBtn.click(); });
 
     undoBtn.addEventListener('click', ()=>{
-      if (placed.length===0) { updateStatus('Нечего отменять'); return; }
+      if (placed.length===0){ updateStatus('Нечего отменять'); return; }
       const last = placed.pop();
       shipsPool[last.size] = (shipsPool[last.size] || 0) + 1;
       renderAll();
-      updateStatus('Отменён последний корабль');
+      updateStatus('Отменён последний');
     });
+    undoBtn.addEventListener('touchend', e=>{ e.preventDefault(); undoBtn.click(); });
 
     eraseModeBtn.addEventListener('click', ()=>{
       eraseMode = !eraseMode;
       eraseModeBtn.innerText = `🧽 Режим удаления: ${eraseMode ? 'вкл' : 'выкл'}`;
-      eraseModeBtn.classList.toggle('selected', eraseMode);
-      updateStatus();
     });
+    eraseModeBtn.addEventListener('touchend', e=>{ e.preventDefault(); eraseModeBtn.click(); });
 
     readyBtn.addEventListener('click', async ()=>{
-      if (!allPlaced()) { updateStatus('Сначала размести все корабли'); return; }
-      // отправляем на mock backend
+      if (!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
       readyBtn.disabled = true;
-      updateStatus('Отправка расстановки...');
-      try{
+      updateStatus('Отправка...');
+      try {
         await mockFetch('/match/random/join', { telegram_id: userId });
         await mockFetch('/match/demo-123/place-ships', { telegram_id: userId, ships: placed });
-        updateStatus('Отправлено. Ожидаем начала матча...');
-        // переход к следующему экран — простой сигнал (в оригинальном проекте покажи screen-match)
-        setTimeout(async ()=>{
-          await mockFetch('/match/demo-123/wait-ready', { telegram_id: userId });
-          updateStatus('Матч начался (демо)');
-          // тут можно вызвать initBattle() твоего игрового экрана
-        }, 600);
+        updateStatus('Отправлено — ждём старта...');
+        setTimeout(async ()=>{ await mockFetch('/match/demo-123/wait-ready', { telegram_id: userId }); updateStatus('Матч начался (демо)'); }, 600);
       } catch(err){
         console.error(err);
         updateStatus('Ошибка отправки');
       } finally { readyBtn.disabled = !allPlaced(); }
     });
+    readyBtn.addEventListener('touchend', e=>{ e.preventDefault(); readyBtn.click(); });
 
-    document.getElementById('backBtn').addEventListener('click', ()=> {
-      // просто возвращаемся (в оригинале — к меню)
-      updateStatus('Отмена — назад');
-      // В зависимости от навигации, можно сделать showScreen('screen-menu')
-    });
+    backBtn.addEventListener('click', ()=>{ updateStatus('Назад'); });
+    backBtn.addEventListener('touchend', e=>{ e.preventDefault(); backBtn.click(); });
 
-    // ---------------- Random placement util ----------------
+    // random placement
     function clearAll(){
       placed = [];
       shipsPool = groupSizes(SHIP_SIZES);
@@ -336,42 +309,31 @@
       eraseModeBtn.innerText = '🧽 Режим удаления: выкл';
       renderAll();
     }
-
     function randomPlaceAll(){
       clearAll();
-      const sizes = [...SHIP_SIZES]; // copy
-      // shuffle sizes for some variance
-      sizes.sort(()=>Math.random()-0.5);
+      const sizes = [...SHIP_SIZES].sort(()=>Math.random()-0.5);
       for (const s of sizes){
-        let tries = 0;
-        let placedOK = false;
-        while(tries < 200 && !placedOK){
+        let tries = 0, ok=false;
+        while(tries < 400 && !ok){
           const start = Math.floor(Math.random()*100);
-          const orient = (Math.random() < 0.5) ? 'H' : 'V';
+          const orient = (Math.random()<0.5) ? 'H' : 'V';
           const cells = cellsForPlacement(start, s, orient);
-          if (cells && !overlaps(cells)){
-            placed.push({ id: nextShipId++, size: s, startIdx: start, orientation: orient, cells });
-            shipsPool[s] = (shipsPool[s] || 0) - 1;
-            placedOK = true;
-          }
+          if (cells && !overlaps(cells)){ placed.push({ id: nextShipId++, size: s, startIdx: start, orientation: orient, cells }); shipsPool[s] = (shipsPool[s]||0)-1; ok=true; }
           tries++;
         }
-        if (!placedOK){
-          // если не получилось — делаем полную перезапись (рекурсивно)
-          return randomPlaceAll();
-        }
+        if (!ok) return randomPlaceAll(); // try whole shuffle again
       }
       renderAll();
     }
 
-    // ---------------- init ----------------
+    // init
     function init(){
       buildField();
       renderShipsPanel();
       renderAll();
-      updateStatus('Выбери корабль и тапни по полю, чтобы поставить. Можно нажать "Авто" для случайной расстановки.');
+      updateStatus('Выберите корабль в панели и тапните по полю. Если не работает — открой в Telegram ещё раз.');
+      dbg.style.display = 'none';
     }
-
     init();
   </script>
 </body>

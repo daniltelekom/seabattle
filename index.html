@@ -147,6 +147,18 @@
     </div>
   </div>
 
+  <!-- Shop modal (подарок) -->
+<div id="shopModal" style="display:none;position:fixed;left:0;top:0;right:0;bottom:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:1000;">
+  <div style="width:92%;max-width:420px;background:white;border-radius:14px;padding:14px;position:relative;text-align:center;box-shadow:0 10px 30px rgba(2,20,60,0.2);">
+    <button id="shopClose" style="position:absolute;right:10px;top:10px;background:transparent;border:none;font-size:18px;cursor:pointer;">✕</button>
+    <div style="font-size:18px;font-weight:700;margin-bottom:8px;">🎁 Магазин скинов</div>
+    <div id="shopModalContent" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:6px;"></div>
+    <div style="margin-top:10px;">
+      <button id="shopModalBuyAll" class="ship-btn" style="background:linear-gradient(90deg,#4caf50,#388e3c);">Купить/Открыть в боте</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ================== Настройки (вставь свои ссылки) ================== */
 const SOCKET_URL = "https://seabattle-server-production.up.railway.app"; // <- ОБЯЗАТЕЛЬНО https://...
@@ -689,16 +701,5 @@ initUI();
 ===================================================================== */
 
 </script>
-  <!-- Shop modal (подарок) -->
-<div id="shopModal" style="display:none;position:fixed;left:0;top:0;right:0;bottom:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:1000;">
-  <div style="width:92%;max-width:420px;background:white;border-radius:14px;padding:14px;position:relative;text-align:center;box-shadow:0 10px 30px rgba(2,20,60,0.2);">
-    <button id="shopClose" style="position:absolute;right:10px;top:10px;background:transparent;border:none;font-size:18px;cursor:pointer;">✕</button>
-    <div style="font-size:18px;font-weight:700;margin-bottom:8px;">🎁 Магазин скинов</div>
-    <div id="shopModalContent" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:6px;"></div>
-    <div style="margin-top:10px;">
-      <button id="shopModalBuyAll" class="ship-btn" style="background:linear-gradient(90deg,#4caf50,#388e3c);">Купить/Открыть в боте</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>

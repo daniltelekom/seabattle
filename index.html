@@ -1,340 +1,447 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>SeaStrike — Placement fixed (touch)</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:sans-serif;padding:14px;background:#e3f2fd;color:#072146}
-    h2{margin-bottom:8px}
-    .row{display:flex;gap:8px;align-items:center;margin:8px 0}
-    .btn{padding:10px 12px;border-radius:10px;border:0;background:#1976d2;color:#fff;font-weight:700;cursor:pointer}
-    .btn.secondary{background:#90a4ae}
-    .panel{background:#fff;padding:10px;border-radius:10px;box-shadow:0 4px 10px rgba(3,27,66,0.06)}
-    .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-top:12px}
-    .cell{aspect-ratio:1;background:#e8f3ff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b3d91;user-select:none;touch-action:manipulation}
-    .cell.occupied{background:#90caf9}
-    .cell.bad{background:#ffcdd2}
-    .ships-panel{display:flex;flex-wrap:wrap;gap:8px}
-    /* Сделаем реальные кнопки — они надёжней работают на мобильных */
-    .ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;font-weight:700;cursor:pointer;min-width:44px;text-align:center;border:none}
-    .ship-btn.selected{outline:3px solid #ffca28}
-    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-    .rules{font-size:13px;color:#263238;margin-top:8px}
-    #status{margin-top:8px;font-weight:700}
-    @media (max-width:520px){
-      body{padding:10px}
-      .cell{font-size:11px}
-      .ship-btn{min-width:34px;padding:6px}
-    }
-    /* небольшой отладочный блок (скрываем, если не нужно) */
-    #dbg { position:fixed; right:8px; bottom:8px; background:rgba(0,0,0,0.6); color:#fff; padding:6px 8px; border-radius:6px; font-size:12px; z-index:9999 }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>SeaStrike MiniApp — Telegram</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<style>
+:root{--accent:#1976d2;--bg:#e9f4ff;--card:#fff;--cell:#e8f3ff;--hit:#f44336;--occupied:#2b9cff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#072146;display:flex;flex-direction:column;gap:8px}
+.header{display:flex;justify-content:space-between;align-items:center}
+.panel{background:var(--card);padding:10px;border-radius:12px;box-shadow:0 6px 18px rgba(2,20,60,0.06)}
+.layout{display:grid;grid-template-columns:1fr 360px;gap:12px}
+@media (max-width:920px){ .layout{grid-template-columns:1fr} }
+.field-wrap{display:flex;justify-content:center;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;touch-action:manipulation;width:100%}
+.cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none}
+.cell.occupied{background:var(--occupied);color:white}
+.cell.hit{background:var(--hit);color:white}
+.ships-panel{display:flex;flex-wrap:wrap;gap:8px}
+.ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;border:none;min-width:42px}
+.ship-btn.selected{outline:3px solid #ffca28}
+.footer{position:fixed;left:10px;right:10px;bottom:10px;display:flex;gap:8px;z-index:20}
+.footer .panel{flex:1;display:flex;justify-content:space-between;align-items:center;padding:10px}
+.info{font-size:13px;color:#263238}
+.small{font-size:12px;color:#3b4752}
+#dbg{position:fixed;right:8px;top:8px;background:rgba(0,0,0,0.6);color:#fff;padding:6px 8px;border-radius:6px;display:none}
+</style>
 </head>
 <body>
-  <h2>SeaStrike — расстановка (фикс для touch)</h2>
+<div class="header">
+  <div><h2>SeaStrike — MiniApp</h2><div class="small">Классический морской бой. Играй с другом или в поиск.</div></div>
+  <div class="small">PlayerID: <span id="playerIdLabel">—</span></div>
+</div>
 
+<div class="layout">
   <div class="panel">
-    <div class="row">
-      <div style="flex:1">
-        <div class="ships-panel" id="shipsPanel" aria-label="Панель кораблей"></div>
-        <div class="controls">
-          <button class="btn secondary" id="rotateBtn">Повернуть (H)</button>
-          <button class="btn secondary" id="autoBtn">🔀 Авто</button>
-          <button class="btn secondary" id="undoBtn">↶ Отменить последний</button>
-          <button class="btn secondary" id="eraseModeBtn">🧽 Режим удаления: выкл</button>
-        </div>
-        <div class="rules" id="rules">
-          <b>Правила:</b> Набор: 1×4, 2×3, 3×2, 4×1. Тапни по кораблю в панели → тапни по клетке поля. Повернуть — кнопка. Удаление через режим удаления.
-        </div>
-      </div>
-      <div style="width:220px;margin-left:12px">
-        <div style="font-size:13px">Статус</div>
-        <div id="status" class="panel">Готовь расстановку</div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="ships-panel" id="shipsPanel"></div>
+      <div style="display:flex;gap:8px">
+        <button id="rotateBtn" class="ship-btn">Повернуть (H)</button>
+        <button id="autoBtn" class="ship-btn">Авто</button>
       </div>
     </div>
 
-    <div style="margin-top:12px" id="myFieldContainer">
-      <div class="grid" id="myField" aria-label="Игровое поле"></div>
+    <div id="fieldWrap" class="field-wrap" style="margin-top:12px">
+      <div id="boardContainer" style="width:100%;max-width:560px">
+        <div id="myField" class="grid"></div>
+      </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn" id="readyBtn" disabled>✅ Готово</button>
-      <button class="btn secondary" id="backBtn">⬅ Назад</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+      <div id="status" class="small">Выберите корабль и тапните по полю</div>
+      <div style="display:flex;gap:8px">
+        <button id="undoBtn" class="ship-btn">↶ Отменить</button>
+        <button id="eraseModeBtn" class="ship-btn">Удаление: выкл</button>
+      </div>
     </div>
+
   </div>
 
-  <div id="dbg" style="display:none">DBG</div>
+  <div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:8px">
+        <select id="modeSelect"><option value="mock">Mode: mock</option><option value="firebase">Mode: firebase</option></select>
+        <button id="createMatchBtn" class="ship-btn">Создать матч</button>
+        <input id="matchIdInput" placeholder="match id для join" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd"/>
+      </div>
 
-  <script>
-    // --- init Telegram fallback ---
-    const WebApp = window.Telegram?.WebApp || null;
-    const initUser = WebApp?.initDataUnsafe?.user || { id: 12345, username: 'local_test' };
-    const userId = initUser.id;
-    try { if (WebApp) WebApp.expand?.(); } catch(e){ console.warn(e); }
+      <div style="display:flex;gap:8px">
+        <button id="joinMatchBtn" class="ship-btn">Присоединиться</button>
+        <button id="findBtn" class="ship-btn">Найти игру</button>
+        <button id="leaveBtn" class="ship-btn">Выйти</button>
+      </div>
 
-    // --- safety: show runtime errors in status for mobile debugging ---
-    const statusEl = document.getElementById('status');
-    window.addEventListener('error', e => {
-      console.error('JS error', e.error || e.message);
-      statusEl.textContent = 'Error: ' + (e.error?.message || e.message || 'unknown');
-      const dbg = document.getElementById('dbg');
-      dbg.style.display = 'block';
-      dbg.textContent = (e.error?.message || e.message || 'err').slice(0,120);
-    });
-    window.addEventListener('unhandledrejection', ev => {
-      console.error('Promise rejection', ev.reason);
-      statusEl.textContent = 'Promise rejection: ' + (ev.reason?.message || String(ev.reason)).slice(0,80);
-    });
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="info">Mode: <span id="modeLabel">mock</span></div>
+        <div class="info">Match: <span id="matchLabel">—</span></div>
+        <div class="info">Turn: <span id="turnLabel">—</span></div>
+        <div class="info">Rating: <span id="ratingLabel">1000</span> • Stars: <span id="starsLabel">0</span></div>
+      </div>
 
-    // ---- ship set ----
-    const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
-    function groupSizes(arr){ const out = {}; arr.forEach(s => out[s] = (out[s] || 0) + 1); return out; }
-    let shipsPool = groupSizes(SHIP_SIZES);
-    let placed = []; // placed ships
-    let nextShipId = 1;
-    let selectedSize = null;
-    let orientation = 'H';
-    let eraseMode = false;
+      <hr/>
+      <div class="info"><b>Магазин</b></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <img src="" alt="" style="width:48px;height:32px;background:#ddd;border-radius:6px"/>
+          <div style="flex:1">
+            <div class="small">Skin: Blue Ship — Цена: 50 stars</div>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <button id="buySkinBtn" class="ship-btn">Купить за stars</button>
+              <button id="buyStarsBtn" class="ship-btn">Купить stars (через бота)</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-    // worker fallback (same as раньше)
-    let worker = null;
-    try { worker = new Worker('mock-worker.js'); } catch(e){ worker = null; }
-    function mockFetch(path, data = {}) {
-      if (worker) {
-        return new Promise(resolve=>{
-          const url = 'http://mock' + path;
-          const onMsg = e => {
-            if (e.data && e.data.url === url){ resolve(e.data.result); worker.removeEventListener('message', onMsg); }
-            else if (e.data && e.data.error){ resolve(e.data); worker.removeEventListener('message', onMsg); }
-          };
-          worker.addEventListener('message', onMsg);
-          worker.postMessage({ url, method:'POST', body: data });
-        });
-      } else {
-        // minimal endpoints for placement flow
-        const endpoints = {
-          '/match/random/join': ()=>({ status:'matched', match_id:'demo-123', opponent_id:999999, is_your_turn:true }),
-          '/match/demo-123/place-ships': ()=>({ status:'ok' }),
-          '/match/demo-123/wait-ready': ()=>({ status:'ready' })
-        };
-        return new Promise(resolve => setTimeout(()=> resolve(endpoints[path] ? endpoints[path](data) : { error:'not found' }), 80));
-      }
-    }
+    </div>
+  </div>
+</div>
 
-    // --- UI build ---
-    const myField = document.getElementById('myField');
-    const shipsPanel = document.getElementById('shipsPanel');
-    const rotateBtn = document.getElementById('rotateBtn');
-    const autoBtn = document.getElementById('autoBtn');
-    const undoBtn = document.getElementById('undoBtn');
-    const eraseModeBtn = document.getElementById('eraseModeBtn');
-    const readyBtn = document.getElementById('readyBtn');
-    const backBtn = document.getElementById('backBtn');
-    const dbg = document.getElementById('dbg');
+<div id="dbg">DBG</div>
 
-    function buildField(){
-      myField.innerHTML = '';
-      for (let i=0;i<100;i++){
-        const c = document.createElement('div');
-        c.className = 'cell';
-        c.dataset.idx = i;
-        // support both click and touchend reliably
-        c.addEventListener('click', onCellClick);
-        c.addEventListener('touchend', function(e){ e.preventDefault(); onCellClick.call(this, e); });
-        myField.appendChild(c);
-      }
-    }
+<div class="footer">
+  <div class="panel">
+    <div class="info">Поддержка: Firebase (онлайн) / Mock (локал)</div>
+    <div style="display:flex;gap:8px">
+      <button id="readyBtn" class="ship-btn">✅ Готов</button>
+      <button id="attackBtn" class="ship-btn" disabled>Атаковать (demo)</button>
+    </div>
+  </div>
+</div>
 
-    function renderShipsPanel(){
-      shipsPanel.innerHTML = '';
-      const unique = Array.from(new Set(SHIP_SIZES)).sort((a,b)=>b-a);
-      unique.forEach(size => {
-        const countLeft = shipsPool[size] || 0;
-        const btn = document.createElement('button');
-        btn.className = 'ship-btn' + (selectedSize===size ? ' selected' : '');
-        btn.type = 'button';
-        btn.innerText = `${size} × ${countLeft}`;
-        btn.dataset.size = size;
-        // click & touch support
-        const handler = (ev) => {
-          ev.preventDefault();
-          if (countLeft <= 0) { statusEl.textContent = 'Нет таких кораблей'; return; }
-          selectedSize = (selectedSize === size) ? null : size;
-          renderShipsPanel();
-          updateStatus();
-        };
-        btn.addEventListener('click', handler);
-        btn.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); });
-        shipsPanel.appendChild(btn);
+<script>
+/* ================== Настройки =====================
+ - Поменяй USE_FIREBASE на true и вставь FIREBASE_CONFIG ниже,
+   чтобы включить онлайн-режим с Realtime DB.
+ - Если не хочешь сразу Firebase — оставь USE_FIREBASE=false — mock mode работает сразу.
+=================================================== */
+const USE_FIREBASE = false; // <-- поставь true когда вставишь config
+const FIREBASE_CONFIG = null; // <-- Вставь сюда объект конфигурации Firebase (из консоли) или оставь null
+
+// ---------- Telegram WebApp fallback ----------
+const WebApp = window.Telegram?.WebApp || null;
+const initUser = WebApp?.initDataUnsafe?.user || { id: Math.floor(Math.random()*1e6), username: 'local_test' };
+const PLAYER_ID = initUser.id;
+document.getElementById('playerIdLabel').innerText = PLAYER_ID;
+
+// ---------- Game state ----------
+const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
+function group(arr){ const out={}; arr.forEach(s => out[s]=(out[s]||0)+1); return out; }
+let shipsPool = group(SHIP_SIZES);
+let placed = []; // list of ships
+let nextShipId = 1;
+let selectedSize = null;
+let orientation = 'H';
+let eraseMode = false;
+
+// UI elements
+const myField = document.getElementById('myField');
+const shipsPanel = document.getElementById('shipsPanel');
+const rotateBtn = document.getElementById('rotateBtn');
+const autoBtn = document.getElementById('autoBtn');
+const undoBtn = document.getElementById('undoBtn');
+const eraseModeBtn = document.getElementById('eraseModeBtn');
+const readyBtn = document.getElementById('readyBtn');
+const attackBtn = document.getElementById('attackBtn');
+const statusEl = document.getElementById('status');
+const modeSelect = document.getElementById('modeSelect');
+const modeLabel = document.getElementById('modeLabel');
+const matchLabel = document.getElementById('matchLabel');
+const turnLabel = document.getElementById('turnLabel');
+const matchIdInput = document.getElementById('matchIdInput');
+const createMatchBtn = document.getElementById('createMatchBtn');
+const joinMatchBtn = document.getElementById('joinMatchBtn');
+const findBtn = document.getElementById('findBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+const ratingLabel = document.getElementById('ratingLabel');
+const starsLabel = document.getElementById('starsLabel');
+
+const dbg = document.getElementById('dbg');
+
+// ---------- Firebase placeholders ----------
+let firebaseApp = null;
+let firebaseDB = null;
+let CURRENT_MODE = 'mock';
+let currentMatchId = null;
+let myPlayerIndex = null;
+let isHost = false;
+let currentTurn = null;
+
+// ---------- helper funcs ----------
+function coords(idx){ return { x: idx % 10, y: Math.floor(idx/10) }; }
+function cellIndex(x,y){ return y*10 + x; }
+function cellsFor(start,size,orient){
+  const p = coords(start); const cells = [];
+  if (orient==='H'){ for (let k=0;k<size;k++){ const nx = p.x + k; if (nx>9) return null; cells.push(cellIndex(nx,p.y)); } }
+  else { for (let k=0;k<size;k++){ const ny = p.y + k; if (ny>9) return null; cells.push(cellIndex(p.x,ny)); } }
+  return cells;
+}
+function adjacentCellsOf(c){ const {x,y}=coords(c); const out=[]; for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++){ const nx=x+dx, ny=y+dy; if (nx>=0 && nx<10 && ny>=0 && ny<10) out.push(cellIndex(nx,ny)); } return out; }
+function overlapsOrAdjacent(cells){
+  const occ = new Set(placed.flatMap(s=>s.cells));
+  for (const c of cells){
+    if (occ.has(c)) return { overlap:true };
+    for (const n of adjacentCellsOf(c)) if (occ.has(n)) return { adjacent:true, at:n };
+  }
+  return null;
+}
+
+function buildField(){
+  myField.innerHTML = '';
+  for (let i=0;i<100;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.idx = i;
+    c.addEventListener('click', onCellClick);
+    c.addEventListener('touchend', function(e){ e.preventDefault(); onCellClick.call(this,e); });
+    myField.appendChild(c);
+  }
+}
+function renderShipsPanel(){
+  shipsPanel.innerHTML = '';
+  const unique = Array.from(new Set(SHIP_SIZES)).sort((a,b)=>b-a);
+  unique.forEach(size=>{
+    const left = shipsPool[size] || 0;
+    const btn = document.createElement('button');
+    btn.className = 'ship-btn' + (selectedSize===size ? ' selected' : '');
+    btn.type = 'button';
+    btn.innerText = `${size} × ${left}`;
+    btn.dataset.size = size;
+    function handler(e){ e.preventDefault(); if (left<=0) { updateStatus('Нет таких кораблей'); return; } selectedSize = (selectedSize===size)?null:size; renderShipsPanel(); updateStatus(); }
+    btn.addEventListener('click', handler);
+    btn.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); });
+    shipsPanel.appendChild(btn);
+  });
+}
+function renderAll(){
+  document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit'); c.textContent=''; });
+  placed.forEach(s=> s.cells.forEach((ci,i)=>{ const el = myField.children[ci]; if(!el) return; el.classList.add('occupied'); if(i===0) el.textContent = s.size; }));
+  renderShipsPanel();
+  readyBtn.disabled = !allPlaced();
+  updateStatus();
+}
+function allPlaced(){ return Object.values(shipsPool).every(v=>v===0); }
+
+function placeShipAt(startIdx,size,orient){
+  const cells = cellsFor(startIdx,size,orient);
+  if (!cells) return { ok:false, reason:'out' };
+  const bad = overlapsOrAdjacent(cells);
+  if (bad){ if (bad.overlap) return { ok:false, reason:'overlap' }; if (bad.adjacent) return { ok:false, reason:'adjacent' }; }
+  const ship = { id: nextShipId++, size, start: startIdx, orientation:orient, cells };
+  placed.push(ship);
+  shipsPool[size] = (shipsPool[size]||0) - 1;
+  renderAll();
+  return { ok:true, ship };
+}
+function findShipByCell(idx){ return placed.find(s=>s.cells.includes(idx)); }
+function removeShipById(id){ const i=placed.findIndex(s=>s.id===id); if (i===-1) return false; const s=placed[i]; shipsPool[s.size] = (shipsPool[s.size]||0)+1; placed.splice(i,1); renderAll(); return true; }
+
+function onCellClick(e){
+  const el = e.currentTarget || this;
+  const idx = parseInt(el.dataset.idx);
+  if (eraseMode){ const ship = findShipByCell(idx); if (ship){ removeShipById(ship.id); updateStatus('Корабль удалён'); } else updateStatus('Нет корабля'); return; }
+  if (!selectedSize){ updateStatus('Выберите корабль'); return; }
+  const res = placeShipAt(idx, selectedSize, orientation);
+  if (!res.ok){ if (res.reason==='out') updateStatus('Выход за границы'); else if (res.reason==='overlap') updateStatus('Перекрытие'); else if (res.reason==='adjacent') updateStatus('Рядом другой корабль'); else updateStatus('Нельзя поставить'); }
+  else { updateStatus('Корабль поставлен'); if ((shipsPool[selectedSize]||0) <= 0) selectedSize = null; }
+}
+
+rotateBtn.addEventListener('click', ()=>{ orientation = (orientation==='H')?'V':'H'; rotateBtn.innerText = `Повернуть (${orientation})`; updateStatus(); });
+rotateBtn.addEventListener('touchend', (e)=>{ e.preventDefault(); rotateBtn.click(); });
+autoBtn.addEventListener('click', ()=>{ randomPlaceAll(); updateStatus('Авто-расстановка'); });
+
+undoBtn.addEventListener('click', ()=>{ if (placed.length===0){ updateStatus('Нечего отменять'); return; } const last = placed.pop(); shipsPool[last.size] = (shipsPool[last.size]||0)+1; renderAll(); updateStatus('Отменён последний'); });
+eraseModeBtn.addEventListener('click', ()=>{ eraseMode = !eraseMode; eraseModeBtn.innerText = `Удаление: ${eraseMode?'вкл':'выкл'}`; });
+
+function updateStatus(msg){ if (msg) { statusEl.innerText = msg; return; } if (allPlaced()) statusEl.innerText = 'Все корабли расставлены — нажми Готов'; else if (selectedSize) statusEl.innerText = `Выбрано ${selectedSize} (ориентация ${orientation})`; else statusEl.innerText = 'Выберите корабль'; }
+
+// random placement (respects adjacency)
+function clearAll(){ placed=[]; shipsPool = group(SHIP_SIZES); nextShipId=1; selectedSize=null; orientation='H'; eraseMode=false; eraseModeBtn.innerText='Удаление: выкл'; renderAll(); }
+function randomPlaceAll(){ clearAll(); const sizes = [...SHIP_SIZES].sort(()=>Math.random()-0.5); for (const s of sizes){ let tries=0, ok=false; while(tries<500 && !ok){ const start = Math.floor(Math.random()*100); const orient = Math.random()<0.5?'H':'V'; const cells = cellsFor(start,s,orient); if (cells && !overlapsOrAdjacent(cells)){ placed.push({ id: nextShipId++, size:s, start, orientation:orient, cells }); shipsPool[s] = (shipsPool[s]||0)-1; ok=true; } tries++; } if (!ok) return randomPlaceAll(); } renderAll(); }
+
+// ------------ Mock backend functions ------------
+function mockFetch(path, data={}){
+  return new Promise(resolve => {
+    setTimeout(()=> {
+      if (path === '/match/random/join') return resolve({ status:'matched', match_id:'demo-123', opponent_id:999999, is_your_turn:true });
+      if (path === '/match/demo-123/place-ships') return resolve({ status:'ok' });
+      if (path === '/match/demo-123/wait-ready') return resolve({ status:'ready' });
+      resolve({ error:'not found' });
+    }, 80);
+  });
+}
+
+// ------------- Firebase init & helpers --------------
+async function initFirebase(){
+  if (!USE_FIREBASE) return false;
+  if (!FIREBASE_CONFIG) throw new Error('FIREBASE_CONFIG not provided');
+  // load compat libs
+  await loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+  await loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js');
+  firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+  firebaseDB = firebase.database();
+  return true;
+}
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+
+// ---------- Matchmaking / DB flows ----------
+createMatchBtn.addEventListener('click', async ()=>{
+  CURRENT_MODE = modeSelect.value;
+  if (CURRENT_MODE === 'firebase'){
+    try {
+      await initFirebase();
+      const id = 'm' + Math.random().toString(36).slice(2,9);
+      currentMatchId = id;
+      isHost = true; myPlayerIndex = 0;
+      await firebaseDB.ref('matches/' + id).set({
+        state:'waiting',
+        createdAt:Date.now(),
+        players:{ [PLAYER_ID]:{ id:PLAYER_ID, joinedAt:Date.now(), ready:false } },
+        placements: { },
+        moves: {},
+        turn: null
       });
-    }
+      matchLabel.innerText = id; modeLabel.innerText = 'firebase';
+      listenMatch(id);
+      updateStatus('Матч создан: ' + id);
+    } catch (e){ console.error(e); updateStatus('Firebase init error'); }
+  } else {
+    currentMatchId = 'demo-123';
+    matchLabel.innerText = currentMatchId; modeLabel.innerText = 'mock';
+    updateStatus('Mock match ready');
+  }
+});
 
-    function cellCoords(idx){ return { x: idx % 10, y: Math.floor(idx/10) }; }
-    function cellsForPlacement(startIdx, size, orient){
-      const {x,y} = cellCoords(startIdx);
-      const cells = [];
-      if (orient === 'H'){
-        for (let k=0;k<size;k++){
-          const nx = x + k;
-          if (nx > 9) return null;
-          cells.push(y*10 + nx);
+joinMatchBtn.addEventListener('click', async ()=>{
+  CURRENT_MODE = modeSelect.value;
+  const id = matchIdInput.value.trim();
+  if (!id){ updateStatus('Введи match id'); return; }
+  if (CURRENT_MODE === 'firebase'){
+    try {
+      await initFirebase();
+      const snap = await firebaseDB.ref('matches/' + id).get();
+      if (!snap.exists()){ updateStatus('Матч не найден'); return; }
+      await firebaseDB.ref('matches/' + id + '/players/' + PLAYER_ID).set({ id:PLAYER_ID, joinedAt:Date.now(), ready:false });
+      currentMatchId = id; matchLabel.innerText = id; modeLabel.innerText='firebase'; listenMatch(id);
+      updateStatus('Присоединился к ' + id);
+    } catch(e){ console.error(e); updateStatus('Join error'); }
+  } else {
+    currentMatchId = id; matchLabel.innerText = id; modeLabel.innerText = 'mock'; updateStatus('Joined mock');
+  }
+});
+
+findBtn.addEventListener('click', async ()=>{
+  CURRENT_MODE = modeSelect.value;
+  if (CURRENT_MODE === 'firebase'){
+    try{
+      await initFirebase();
+      const qref = firebaseDB.ref('searching/' + PLAYER_ID);
+      await qref.set({ id:PLAYER_ID, rating: parseInt(ratingLabel.innerText||1000), ts:Date.now() });
+      updateStatus('В поиске — ждём соперника');
+      // simple client-side matching: look for others within rating +/- 200
+      firebaseDB.ref('searching').on('value', snap=>{
+        const all = snap.val() || {};
+        const keys = Object.keys(all).filter(k => k !== String(PLAYER_ID));
+        if (keys.length){
+          const opponentId = keys[0];
+          // create match
+          const id = 'm' + Math.random().toString(36).slice(2,9);
+          const playersObj = {};
+          playersObj[PLAYER_ID] = { id:PLAYER_ID, joinedAt:Date.now(), ready:false };
+          playersObj[opponentId] = { id:opponentId, joinedAt:Date.now(), ready:false };
+          firebaseDB.ref('matches/' + id).set({ state:'waiting', createdAt:Date.now(), players: playersObj, placements:{}, moves:{}, turn:null });
+          // remove from searching
+          firebaseDB.ref('searching/' + PLAYER_ID).remove();
+          firebaseDB.ref('searching/' + opponentId).remove();
+          currentMatchId = id; matchLabel.innerText = id; modeLabel.innerText='firebase'; listenMatch(id);
+          updateStatus('Найден оппонент: ' + opponentId + ' — матч ' + id);
         }
-      } else {
-        for (let k=0;k<size;k++){
-          const ny = y + k;
-          if (ny > 9) return null;
-          cells.push(ny*10 + x);
-        }
-      }
-      return cells;
-    }
-    function overlaps(cells){ const occupied = new Set(placed.flatMap(s => s.cells)); return cells.some(c => occupied.has(c)); }
-
-    function placeShipAt(startIdx, size, orient){
-      const cells = cellsForPlacement(startIdx, size, orient);
-      if (!cells) return { ok:false, reason:'out' };
-      if (overlaps(cells)) return { ok:false, reason:'overlap' };
-      const ship = { id: nextShipId++, size, startIdx, orientation: orient, cells };
-      placed.push(ship);
-      shipsPool[size] = (shipsPool[size] || 0) - 1;
-      renderAll();
-      return { ok:true, ship };
-    }
-
-    function findShipByCell(idx){ return placed.find(s => s.cells.includes(idx)); }
-    function removeShipById(id){ const idx = placed.findIndex(s => s.id === id); if (idx === -1) return false; const s = placed[idx]; shipsPool[s.size] = (shipsPool[s.size] || 0) + 1; placed.splice(idx,1); renderAll(); return true; }
-
-    function renderAll(){
-      document.querySelectorAll('#myField .cell').forEach(c => { c.classList.remove('occupied','bad'); c.textContent = ''; });
-      placed.forEach(s => {
-        s.cells.forEach((ci,i) => {
-          const el = myField.children[ci];
-          if (!el) return;
-          el.classList.add('occupied');
-          if (i===0) el.textContent = s.size;
-        });
       });
-      renderShipsPanel();
-      readyBtn.disabled = !allPlaced();
-      updateStatus();
-    }
+    } catch(e){ console.error(e); updateStatus('Find error'); }
+  } else {
+    updateStatus('Mock: нет поиска');
+  }
+});
 
-    function allPlaced(){ return Object.values(shipsPool).every(v => v === 0); }
+leaveBtn.addEventListener('click', async ()=>{
+  if (CURRENT_MODE === 'firebase' && currentMatchId && firebaseDB){
+    try{ await firebaseDB.ref('matches/' + currentMatchId + '/players/' + PLAYER_ID).remove(); } catch(e){ console.warn(e); }
+  }
+  currentMatchId = null; matchLabel.innerText = '—'; updateStatus('Вышел');
+});
 
-    function updateStatus(msg){
-      if (msg) { statusEl.textContent = msg; return; }
-      if (allPlaced()) statusEl.textContent = 'Все корабли расставлены — нажми Готово';
-      else if (selectedSize) statusEl.textContent = `Выбрано: ${selectedSize} (ориентация ${orientation})`;
-      else statusEl.textContent = 'Выбери корабль в панели и тапни по полю';
-    }
+// listen match updates
+function listenMatch(id){
+  if (!firebaseDB) return;
+  const ref = firebaseDB.ref('matches/' + id);
+  ref.on('value', snap=>{
+    const data = snap.val();
+    if (!data) return;
+    const players = data.players || {};
+    if (Object.keys(players).length === 2) updateStatus('Оба игрока в матче');
+    if (data.turn){ currentTurn = data.turn; turnLabel.innerText = String(currentTurn); attackBtn.disabled = (String(currentTurn) !== String(PLAYER_ID)); }
+    // moves handling etc — можно расширить
+  });
+}
 
-    // handlers
-    function onCellClick(ev){
-      // ev.currentTarget or this
-      const el = ev.currentTarget || this;
-      const idx = parseInt(el.dataset.idx);
-      if (eraseMode){
-        const ship = findShipByCell(idx);
-        if (ship){ removeShipById(ship.id); updateStatus('Корабль удалён'); }
-        else updateStatus('По этой клетке нет корабля');
-        return;
+// send placement
+readyBtn.addEventListener('click', async ()=>{
+  if (!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
+  if (CURRENT_MODE === 'firebase' && firebaseDB && currentMatchId){
+    try {
+      await firebaseDB.ref('matches/' + currentMatchId + '/placements/' + PLAYER_ID).set(placed);
+      await firebaseDB.ref('matches/' + currentMatchId + '/players/' + PLAYER_ID + '/ready').set(true);
+      updateStatus('Расстановка отправлена');
+      // if both ready -> set turn to host (first player in players)
+      const snap = await firebaseDB.ref('matches/' + currentMatchId + '/players').get();
+      const keys = Object.keys(snap.val() || {});
+      if (keys.length === 2){
+        // determine first turn (host)
+        await firebaseDB.ref('matches/' + currentMatchId + '/turn').set(keys[0]);
+        await firebaseDB.ref('matches/' + currentMatchId + '/state').set('started');
       }
-      if (!selectedSize){ updateStatus('Сначала выбери корабль'); return; }
-      const res = placeShipAt(idx, selectedSize, orientation);
-      if (!res.ok){
-        if (res.reason === 'out') updateStatus('Не влезает в выбранную ориентацию');
-        else if (res.reason === 'overlap') updateStatus('Наложение — выбери другое место');
-        else updateStatus('Невозможно поставить');
-      } else {
-        updateStatus('Корабль поставлен');
-        if ((shipsPool[selectedSize] || 0) <= 0) selectedSize = null;
-      }
-    }
+    } catch(e){ console.error(e); updateStatus('Ошибка отправки'); }
+  } else {
+    // mock flow
+    await mockFetch('/match/random/join', { telegram_id: PLAYER_ID });
+    await mockFetch('/match/demo-123/place-ships', { telegram_id: PLAYER_ID, ships: placed });
+    updateStatus('Mock: расстановка отправлена');
+    setTimeout(()=>updateStatus('Mock: матч начался'), 500);
+  }
+});
 
-    rotateBtn.addEventListener('click', ()=>{
-      orientation = (orientation==='H') ? 'V' : 'H';
-      rotateBtn.innerText = `Повернуть (${orientation})`;
-      updateStatus();
-    });
-    rotateBtn.addEventListener('touchend', e => { e.preventDefault(); rotateBtn.click(); });
+// attack button (demo: random)
+attackBtn.addEventListener('click', async ()=>{
+  if (!currentMatchId){ updateStatus('Нет матча'); return; }
+  // demo attack: send random shot to server (or firebase)
+  const x = Math.floor(Math.random()*10), y = Math.floor(Math.random()*10);
+  if (CURRENT_MODE === 'firebase' && firebaseDB){
+    // client writes request -> server function should validate hit
+    // simplified: push move request; ideally use Cloud Function callable (server validated)
+    const movesRef = firebaseDB.ref('matches/' + currentMatchId + '/moves').push();
+    await movesRef.set({ player: PLAYER_ID, x, y, result: 'pending', time: Date.now() });
+    updateStatus('Ход отправлен (demo) ' + x + ',' + y);
+  } else {
+    updateStatus(`Mock: выстрел в (${x},${y}) — ${Math.random()<0.3?'hit':'miss'}`);
+  }
+});
 
-    autoBtn.addEventListener('click', ()=>{ randomPlaceAll(); updateStatus('Авто-расстановка'); });
-    autoBtn.addEventListener('touchend', e=>{ e.preventDefault(); autoBtn.click(); });
+// -------------- Buy / shop stubs --------------
+document.getElementById('buyStarsBtn').addEventListener('click', ()=>{
+  // Для покупки stars — нужно использовать Telegram Payments через бота.
+  // Реальный flow: пользователь в миниаппе нажимает кнопку -> открывает бота/pay flow.
+  // Тут мы показываем инструкцию:
+  alert('Для покупки stars используй бота (пока что). Настроить платежи можно в BotFather / backend.');
+});
 
-    undoBtn.addEventListener('click', ()=>{
-      if (placed.length===0){ updateStatus('Нечего отменять'); return; }
-      const last = placed.pop();
-      shipsPool[last.size] = (shipsPool[last.size] || 0) + 1;
-      renderAll();
-      updateStatus('Отменён последний');
-    });
-    undoBtn.addEventListener('touchend', e=>{ e.preventDefault(); undoBtn.click(); });
+// -------------- Init --------------
+function initUI(){ buildField(); renderShipsPanel(); renderAll(); modeLabel.innerText = modeSelect.value; updateStatus('Готово'); dbg.style.display='none'; }
+initUI();
 
-    eraseModeBtn.addEventListener('click', ()=>{
-      eraseMode = !eraseMode;
-      eraseModeBtn.innerText = `🧽 Режим удаления: ${eraseMode ? 'вкл' : 'выкл'}`;
-    });
-    eraseModeBtn.addEventListener('touchend', e=>{ e.preventDefault(); eraseModeBtn.click(); });
-
-    readyBtn.addEventListener('click', async ()=>{
-      if (!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
-      readyBtn.disabled = true;
-      updateStatus('Отправка...');
-      try {
-        await mockFetch('/match/random/join', { telegram_id: userId });
-        await mockFetch('/match/demo-123/place-ships', { telegram_id: userId, ships: placed });
-        updateStatus('Отправлено — ждём старта...');
-        setTimeout(async ()=>{ await mockFetch('/match/demo-123/wait-ready', { telegram_id: userId }); updateStatus('Матч начался (демо)'); }, 600);
-      } catch(err){
-        console.error(err);
-        updateStatus('Ошибка отправки');
-      } finally { readyBtn.disabled = !allPlaced(); }
-    });
-    readyBtn.addEventListener('touchend', e=>{ e.preventDefault(); readyBtn.click(); });
-
-    backBtn.addEventListener('click', ()=>{ updateStatus('Назад'); });
-    backBtn.addEventListener('touchend', e=>{ e.preventDefault(); backBtn.click(); });
-
-    // random placement
-    function clearAll(){
-      placed = [];
-      shipsPool = groupSizes(SHIP_SIZES);
-      nextShipId = 1;
-      selectedSize = null;
-      orientation = 'H';
-      eraseMode = false;
-      eraseModeBtn.innerText = '🧽 Режим удаления: выкл';
-      renderAll();
-    }
-    function randomPlaceAll(){
-      clearAll();
-      const sizes = [...SHIP_SIZES].sort(()=>Math.random()-0.5);
-      for (const s of sizes){
-        let tries = 0, ok=false;
-        while(tries < 400 && !ok){
-          const start = Math.floor(Math.random()*100);
-          const orient = (Math.random()<0.5) ? 'H' : 'V';
-          const cells = cellsForPlacement(start, s, orient);
-          if (cells && !overlaps(cells)){ placed.push({ id: nextShipId++, size: s, startIdx: start, orientation: orient, cells }); shipsPool[s] = (shipsPool[s]||0)-1; ok=true; }
-          tries++;
-        }
-        if (!ok) return randomPlaceAll(); // try whole shuffle again
-      }
-      renderAll();
-    }
-
-    // init
-    function init(){
-      buildField();
-      renderShipsPanel();
-      renderAll();
-      updateStatus('Выберите корабль в панели и тапните по полю. Если не работает — открой в Telegram ещё раз.');
-      dbg.style.display = 'none';
-    }
-    init();
-  </script>
+</script>
 </body>
 </html>

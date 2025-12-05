@@ -113,7 +113,9 @@ body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#
 </div>
 
 <script>
-  src="https://cdn.socket.io/4.7.2/socket.io.min.js"
+/* ========== Network config: вставь свой URL с https:// в начале ========== */
+const API_URL = "seabattle-server-production.up.railway.app"; // <- замени на свой URL
+
 /* ========== Game State & UI ========= */
 const WebApp = window.Telegram?.WebApp || null;
 const initUser = WebApp?.initDataUnsafe?.user || { id: Math.floor(Math.random()*1e6), username:'local_test' };
@@ -158,65 +160,173 @@ let currentTurn = null;
 let myPlayerIndex = null;
 let isHost = false;
 
-const API_URL = "seabattle-server-production.up.railway.app"; // сюда ссылка на сервер
-
 /* ========== Helper Functions ========== */
 function coords(idx){ return { x: idx % 10, y: Math.floor(idx/10) }; }
 function cellIndex(x,y){ return y*10 + x; }
 function cellsFor(start,size,orient){
   const p = coords(start); const cells = [];
-  if (orient==='H'){ for(let k=0;k<size;k++){ const nx=p.x+k; if(nx>9)return null; cells.push(cellIndex(nx,p.y)); } }
-  else { for(let k=0;k<size;k++){ const ny=p.y+k; if(ny>9)return null; cells.push(cellIndex(p.x,ny)); } }
+  if (orient==='H'){ for(let k=0;k<size;k++){ const nx=p.x+k; if(nx>9) return null; cells.push(cellIndex(nx,p.y)); } }
+  else { for(let k=0;k<size;k++){ const ny=p.y+k; if(ny>9) return null; cells.push(cellIndex(p.x,ny)); } }
   return cells;
 }
 function adjacentCellsOf(c){ const {x,y}=coords(c); const out=[]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const nx=x+dx, ny=y+dy; if(nx>=0&&nx<10&&ny>=0&&ny<10) out.push(cellIndex(nx,ny)); } return out; }
 function overlapsOrAdjacent(cells){ const occ = new Set(placed.flatMap(s=>s.cells)); for(const c of cells){ if(occ.has(c)) return {overlap:true}; for(const n of adjacentCellsOf(c)) if(occ.has(n)) return {adjacent:true,at:n}; } return null; }
 
 function buildField(){ myField.innerHTML=''; for(let i=0;i<100;i++){ const c=document.createElement('div'); c.className='cell'; c.dataset.idx=i; c.addEventListener('click',onCellClick); c.addEventListener('touchend',function(e){ e.preventDefault(); onCellClick.call(this,e); }); myField.appendChild(c); } }
-function renderShipsPanel(){ shipsPanel.innerHTML=''; const unique=Array.from(new Set(SHIP_SIZES)).sort((a,b)=>b-a); unique.forEach(size=>{ const left=shipsPool[size]||0; const btn=document.createElement('button'); btn.className='ship-btn'+(selectedSize===size?' selected':''); btn.type='button'; btn.innerText=${size} × ${left}; function handler(e){ e.preventDefault(); if(left<=0){ updateStatus('Нет таких кораблей'); return; } selectedSize=(selectedSize===size)?null:size; renderShipsPanel(); updateStatus(); } btn.addEventListener('click',handler); btn.addEventListener('touchend',function(e){ e.preventDefault(); handler(e); }); shipsPanel.appendChild(btn); }); }
-function renderAll(){ document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit'); c.textContent=''; }); placed.forEach(s=>s.cells.forEach((ci,i)=>{ const el=myField.children[ci]; if(!el)return; el.classList.add('occupied'); if(i===0)el.textContent=s.size; })); renderShipsPanel(); readyBtn.disabled=!allPlaced(); updateStatus(); }
+
+function renderShipsPanel(){
+  shipsPanel.innerHTML='';
+  const unique = Array.from(new Set(SHIP_SIZES)).sort((a,b)=>b-a);
+  unique.forEach(size=>{
+    const left = shipsPool[size] || 0;
+    const btn = document.createElement('button');
+    btn.className = 'ship-btn' + (selectedSize===size ? ' selected' : '');
+    btn.type = 'button';
+    btn.innerText = `${size} × ${left}`;
+    function handler(e){
+      e.preventDefault();
+      if (left <= 0){ updateStatus('Нет таких кораблей'); return; }
+      selectedSize = (selectedSize === size) ? null : size;
+      renderShipsPanel();
+      updateStatus();
+    }
+    btn.addEventListener('click', handler);
+    btn.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); });
+    shipsPanel.appendChild(btn);
+  });
+}
+
+function renderAll(){
+  document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit'); c.textContent=''; });
+  placed.forEach(s => s.cells.forEach((ci,i) => {
+    const el = myField.children[ci];
+    if(!el) return;
+    el.classList.add('occupied');
+    if(i===0) el.textContent = s.size;
+  }));
+  renderShipsPanel();
+  readyBtn.disabled = !allPlaced();
+  updateStatus();
+}
+
 function allPlaced(){ return Object.values(shipsPool).every(v=>v===0); }
-function placeShipAt(startIdx,size,orient){ const cells=cellsFor(startIdx,size,orient); if(!cells) return {ok:false,reason:'out'}; const bad=overlapsOrAdjacent(cells); if(bad){ if(bad.overlap) return {ok:false,reason:'overlap'}; if(bad.adjacent) return {ok:false,reason:'adjacent'}; } const ship={id:nextShipId++,size,start:startIdx,orientation:orient,cells}; placed.push(ship); shipsPool[size]=(shipsPool[size]||0)-1; renderAll(); return {ok:true,ship}; }
+
+function placeShipAt(startIdx,size,orient){
+  const cells = cellsFor(startIdx,size,orient);
+  if (!cells) return { ok:false, reason:'out' };
+  const bad = overlapsOrAdjacent(cells);
+  if (bad){ if (bad.overlap) return { ok:false, reason:'overlap' }; if (bad.adjacent) return { ok:false, reason:'adjacent' }; }
+  const ship = { id: nextShipId++, size, start: startIdx, orientation: orient, cells };
+  placed.push(ship);
+  shipsPool[size] = (shipsPool[size] || 0) - 1;
+  renderAll();
+  return { ok:true, ship };
+}
+
 function findShipByCell(idx){ return placed.find(s=>s.cells.includes(idx)); }
-function removeShipById(id){ const i=placed.findIndex(s=>s.id===id); if(i===-1)return false; const s=placed[i]; shipsPool[s.size]=(shipsPool[s.size]||0)+1; placed.splice(i,1); renderAll(); return true; }
-function updateStatus(msg){ if(msg){ statusEl.innerText=msg; return; } if(allPlaced()) statusEl.innerText='Все корабли расставлены — нажми Готов'; else if(selectedSize) statusEl.innerText=Выбрано ${selectedSize} (ориентация ${orientation}); else statusEl.innerText='Выберите корабль'; }
+function removeShipById(id){ const i = placed.findIndex(s=>s.id===id); if (i === -1) return false; const s = placed[i]; shipsPool[s.size] = (shipsPool[s.size]||0) + 1; placed.splice(i,1); renderAll(); return true; }
+
+function updateStatus(msg){
+  if (msg){ statusEl.innerText = msg; return; }
+  if (allPlaced()) statusEl.innerText = 'Все корабли расставлены — нажми Готов';
+  else if (selectedSize) statusEl.innerText = `Выбрано ${selectedSize} (ориентация ${orientation})`;
+  else statusEl.innerText = 'Выберите корабль';
+}
 
 /* ========== UI Buttons ========= */
-rotateBtn.addEventListener('click',()=>{ orientation=(orientation==='H')?'V':'H'; rotateBtn.innerText=Повернуть (${orientation}); updateStatus(); });
-autoBtn.addEventListener('click',()=>{ randomPlaceAll(); updateStatus('Авто-расстановка'); });
-undoBtn.addEventListener('click',()=>{ if(placed.length===0){ updateStatus('Нечего отменять'); return; } const last=placed.pop(); shipsPool[last.size]=(shipsPool[last.size]||0)+1; renderAll(); updateStatus('Отменён последний'); });
-eraseModeBtn.addEventListener('click',()=>{ eraseMode=!eraseMode; eraseModeBtn.innerText=Удаление: ${eraseMode?'вкл':'выкл'}; });
+rotateBtn.addEventListener('click', ()=>{ orientation = (orientation==='H') ? 'V' : 'H'; rotateBtn.innerText = `Повернуть (${orientation})`; updateStatus(); });
+autoBtn.addEventListener('click', ()=>{ randomPlaceAll(); updateStatus('Авто-расстановка'); });
+undoBtn.addEventListener('click', ()=>{ if (placed.length===0){ updateStatus('Нечего отменять'); return; } const last = placed.pop(); shipsPool[last.size] = (shipsPool[last.size]||0) + 1; renderAll(); updateStatus('Отменён последний'); });
+eraseModeBtn.addEventListener('click', ()=>{ eraseMode = !eraseMode; eraseModeBtn.innerText = `Удаление: ${eraseMode ? 'вкл' : 'выкл'}`; });
 
-function clearAll(){ placed=[]; shipsPool=group(SHIP_SIZES); nextShipId=1; selectedSize=null; orientation='H'; eraseMode=false; eraseModeBtn.innerText='Удаление: выкл'; renderAll(); }
-function randomPlaceAll(){ clearAll(); const sizes=[...SHIP_SIZES].sort(()=>Math.random()-0.5); for(const s of sizes){ let tries=0,ok=false; while(tries<500&&!ok){ const start=Math.floor(Math.random()*100); const orient=Math.random()<0.5?'H':'V'; const cells=cellsFor(start,s,orient); if(cells&&!overlapsOrAdjacent(cells)){
-  placed.push({id:nextShipId++,size:s,start,orientation:orient,cells}); shipsPool[s]=(shipsPool[s]||0)-1; ok=true; } tries++; } if(!ok)return randomPlaceAll(); } renderAll(); }
+function clearAll(){ placed=[]; shipsPool = group(SHIP_SIZES); nextShipId = 1; selectedSize = null; orientation = 'H'; eraseMode = false; eraseModeBtn.innerText='Удаление: выкл'; renderAll(); }
+function randomPlaceAll(){ clearAll(); const sizes = [...SHIP_SIZES].sort(()=>Math.random()-0.5); for (const s of sizes){ let tries=0, ok=false; while(tries<500 && !ok){ const start = Math.floor(Math.random()*100); const orient = Math.random()<0.5?'H':'V'; const cells = cellsFor(start,s,orient); if(cells && !overlapsOrAdjacent(cells)){ placed.push({ id: nextShipId++, size: s, start, orientation: orient, cells }); shipsPool[s] = (shipsPool[s]||0)-1; ok = true; } tries++; } if(!ok) return randomPlaceAll(); } renderAll(); }
 
-/* ========== Railway API Handlers ========= */
-async function apiFetch(path,data={}){ try{ const resp=await fetch(API_URL+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...data,playerId:PLAYER_ID})}); return await resp.json(); } catch(e){ console.error(e); return {error:'network'}; } }
+/* ========== Click on cell (placement / erase) ========= */
+function onCellClick(e){
+  const el = e.currentTarget || this;
+  const idx = parseInt(el.dataset.idx);
+  if (eraseMode){
+    const ship = findShipByCell(idx);
+    if (ship){ removeShipById(ship.id); updateStatus('Корабль удалён'); } else updateStatus('Нет корабля');
+    return;
+  }
+  if (!selectedSize){ updateStatus('Выберите корабль'); return; }
+  const res = placeShipAt(idx, selectedSize, orientation);
+  if (!res.ok){
+    if (res.reason === 'out') updateStatus('Выход за границы');
+    else if (res.reason === 'overlap') updateStatus('Перекрытие');
+    else if (res.reason === 'adjacent') updateStatus('Рядом другой корабль');
+    else updateStatus('Нельзя поставить');
+  } else {
+    updateStatus('Корабль поставлен');
+    if ((shipsPool[selectedSize]||0) <= 0) selectedSize = null;
+  }
+}
 
-/* ========== Matchmaking / Buttons ========= */
-createMatchBtn.addEventListener('click', async ()=>{
-  if(modeSelect.value!=='railway'){ currentMatchId='demo-123'; matchLabel.innerText=currentMatchId; modeLabel.innerText='mock'; updateStatus('Mock match ready'); return; }
-  const res=await apiFetch('/create-match'); currentMatchId=res.matchId; matchLabel.innerText=currentMatchId; modeLabel.innerText='railway'; updateStatus('Матч создан'); 
+/* ========== Railway REST helper (POST) ========= */
+async function apiFetch(path, data = {}){
+  try{
+    // ensure path begins with '/'
+    const url = API_URL + (path.startsWith('/') ? path : '/' + path);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, playerId: String(PLAYER_ID) })
+    });
+    return await resp.json();
+  } catch(e){
+    console.error('network error', e);
+    return { error: 'network' };
+  }
+}
+
+/* ========== Matchmaking / Buttons (REST) ========= */
+createMatchBtn.addEventListener('click', async () => {
+  if (modeSelect.value !== 'railway'){ currentMatchId = 'demo-123'; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'mock'; updateStatus('Mock match ready'); return; }
+  const res = await apiFetch('/create-match', { playerId: String(PLAYER_ID) });
+  if (res && res.matchId){ currentMatchId = res.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Матч создан: ' + currentMatchId); }
+  else updateStatus('Ошибка создания матча');
 });
-joinMatchBtn.addEventListener('click', async ()=>{
-  const id=matchIdInput.value.trim(); if(!id){ updateStatus('Введите match id'); return; }
-  if(modeSelect.value!=='railway'){ currentMatchId=id; matchLabel.innerText=currentMatchId; modeLabel.innerText='mock'; updateStatus('Joined mock'); return; }
-  const res=await apiFetch('/join-match',{matchId:id}); currentMatchId=id; matchLabel.innerText=currentMatchId; modeLabel.innerText='railway'; updateStatus('Присоединился к '+id);
+
+joinMatchBtn.addEventListener('click', async () => {
+  const id = matchIdInput.value.trim(); if(!id){ updateStatus('Введите match id'); return; }
+  if (modeSelect.value !== 'railway'){ currentMatchId = id; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'mock'; updateStatus('Joined mock'); return; }
+  const res = await apiFetch('/join-match', { matchId: id, playerId: String(PLAYER_ID) });
+  if (res && res.ok){ currentMatchId = id; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Присоединился к ' + id); }
+  else updateStatus(res.error || 'Ошибка join');
 });
-readyBtn.addEventListener('click', async ()=>{
-  if(!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
-  if(modeSelect.value!=='railway'){ updateStatus('Mock: расстановка отправлена'); return; }
-  await apiFetch('/place-ships',{matchId:currentMatchId,ships:placed}); updateStatus('Расстановка отправлена'); 
+
+findBtn.addEventListener('click', async () => {
+  if (modeSelect.value !== 'railway'){ updateStatus('Mock: нет поиска'); return; }
+  const res = await apiFetch('/find', { playerId: String(PLAYER_ID) });
+  if (res && res.matchId){ currentMatchId = res.matchId; matchLabel.innerText = currentMatchId; modeLabel.innerText = 'railway'; updateStatus('Найден матч: ' + currentMatchId); }
+  else updateStatus(res.status || 'В поиске...');
 });
-attackBtn.addEventListener('click', async ()=>{
-  const x=Math.floor(Math.random()*10),y=Math.floor(Math.random()*10);
-  if(modeSelect.value!=='railway'){ updateStatus(Mock: выстрел в (${x},${y}) — ${Math.random()<0.3?'hit':'miss'}); return; }
-  const res=await apiFetch('/shoot',{matchId:currentMatchId,x,y}); updateStatus(Выстрел в (${x},${y}) — ${res.result});
+
+leaveBtn.addEventListener('click', async () => {
+  try{ await apiFetch('/leave', { playerId: String(PLAYER_ID), matchId: currentMatchId }); }catch(e){}
+  currentMatchId = null; matchLabel.innerText = '—'; updateStatus('Вышел');
+});
+
+readyBtn.addEventListener('click', async () => {
+  if (!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
+  if (modeSelect.value !== 'railway'){ updateStatus('Mock: расстановка отправлена'); return; }
+  const res = await apiFetch('/place-ships', { matchId: currentMatchId, playerId: String(PLAYER_ID), ships: placed });
+  if (res && res.ok) updateStatus('Расстановка отправлена');
+  else updateStatus(res.error || 'Ошибка отправки');
+});
+
+attackBtn.addEventListener('click', async () => {
+  const x = Math.floor(Math.random()*10), y = Math.floor(Math.random()*10);
+  if (modeSelect.value !== 'railway'){ updateStatus(`Mock: выстрел в (${x},${y}) — ${Math.random()<0.3?'hit':'miss'}`); return; }
+  const res = await apiFetch('/shoot', { matchId: currentMatchId, playerId: String(PLAYER_ID), x, y });
+  if (res && res.ok) updateStatus(`Выстрел в (${x},${y}) — ${res.result || (res.error?'error:'+res.error:'ok')}`);
+  else updateStatus('Ошибка выстрела');
 });
 
 /* ========== Init ========= */
-function initUI(){ buildField(); renderShipsPanel(); renderAll(); modeLabel.innerText=modeSelect.value; updateStatus('Готово'); dbg.style.display='none'; }
+function initUI(){ buildField(); renderShipsPanel(); renderAll(); modeLabel.innerText = modeSelect.value; updateStatus('Готово'); dbg.style.display='none'; }
 initUI();
 </script>
 </body>

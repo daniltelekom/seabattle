@@ -385,15 +385,57 @@ function randomPlaceAll(){ clearAll(); const sizes=[...SHIP_SIZES].sort(()=>Math
 /* ================== Enemy click: send shoot to server ================== */
 function onEnemyClick(e){
   const el = e.currentTarget || this;
-  const idx = parseInt(el.dataset.idx);
-  if(!currentMatchId){ updateStatus('Нет матча — создай или присоединяйся'); return; }
-  if(!currentTurn || String(currentTurn) !== String(PLAYER_ID)){ updateStatus('Сейчас не ваш ход'); return; }
-  if(el.classList.contains('miss') || el.classList.contains('hit') || el.classList.contains('sunk') || el.classList.contains('pending')){ updateStatus('Вы уже стреляли сюда'); return; }
+  const idx = parseInt(el.dataset.idx, 10);
+
+  if (!currentMatchId) {
+    updateStatus('Нет матча — создай или присоединяйся');
+    return;
+  }
+
+  // уже стреляли сюда – просто не даём ещё раз
+  if (
+    el.classList.contains('miss') ||
+    el.classList.contains('hit') ||
+    el.classList.contains('sunk') ||
+    el.classList.contains('pending')
+  ) {
+    updateStatus('Вы уже стреляли сюда');
+    return;
+  }
+
   const { x, y } = coords(idx);
-  if(!socket) initSocket();
-  socket.emit('shoot', { matchId: currentMatchId, playerId: PLAYER_ID, x, y });
+
+  if (!socket) initSocket();
+
+  // помечаем как «ожидаем ответа»
   el.classList.add('pending');
   updateStatus(`Выстрел: ${x},${y} — ждём ответа`);
+
+  // отправляем выстрел с ACK от сервера
+  socket.emit(
+    'shoot',
+    { matchId: currentMatchId, playerId: PLAYER_ID, x, y },
+    (err, res) => {
+      // ACK пришёл сразу от сервера
+      if (err || !res || res.ok === false) {
+        el.classList.remove('pending');
+
+        if (res && res.error === 'not_your_turn') {
+          updateStatus('Сейчас не ваш ход');
+        } else if (res && res.error === 'already_shot') {
+          updateStatus('Сюда уже стреляли');
+        } else if (res && res.error === 'match_not_found') {
+          updateStatus('Матч не найден');
+        } else {
+          updateStatus('Ошибка выстрела');
+        }
+        return;
+      }
+
+      // Основной результат (hit/miss/sunk) всё равно придёт в
+      // socket.on('shot_result'), там уже обновляем клетки.
+    }
+  );
 }
 
 /* ================== Socket.IO integration ================== */

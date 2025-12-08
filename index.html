@@ -161,6 +161,27 @@
   </div>
 
   <script>
+  // DEBUG HUD - временно
+  (function(){
+    const dbg = document.createElement('div');
+    dbg.id = '__quick_dbg';
+    dbg.style.position='fixed';
+    dbg.style.right='8px';
+    dbg.style.top='8px';
+    dbg.style.zIndex=99999;
+    dbg.style.padding='6px 8px';
+    dbg.style.background='rgba(0,0,0,0.6)';
+    dbg.style.color='#fff';
+    dbg.style.fontSize='12px';
+    dbg.innerText='DEBUG: init...';
+    document.body.appendChild(dbg);
+    window.__setDbg = (t)=> { dbg.innerText = 'DEBUG: ' + t; };
+    window.addEventListener('error', e => { dbg.innerText = 'JS Error: ' + e.message; console.error(e); });
+    setTimeout(()=> window.__setDbg('loaded DOM? ' + !!document.getElementById('myField')), 600);
+  })();
+</script>
+  
+  <script>
 /* ================== Настройки (замени) ================== */
 const SOCKET_URL = "https://seabattle-server-production.up.railway.app"; // <- проверь: должен быть с https://
 const SHOP_URL = "https://t.me/YourBotOrShop";

@@ -21,7 +21,7 @@
       --occupied:#2b9cff;
       --pending:#ffd54f;
       --sunk:#b71c1c;
-      --ship-img-size:64px; /* базовый размер части корабля в px */
+      --ship-img-size:64px; /* можно менять динамически */
     }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:system-ui,Roboto,Arial;margin:10px;background:var(--bg);color:#072146;display:flex;flex-direction:column;gap:10px;min-height:100vh}
@@ -32,20 +32,22 @@
     .field-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
     .big-grid{width:100%;max-width:560px;display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
     .small-grid{width:260px;display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
-    .cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none;overflow:hidden}
-    .cell.occupied{background:var(--occupied);color:white}
+    .cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none;overflow:hidden;position:relative}
+    .cell.occupied{color:white}
     .cell.miss{background:var(--miss)}
     .cell.hit{background:var(--hit);color:white}
     .cell.pending{background:var(--pending)}
     .cell.sunk{background:var(--sunk);color:white}
-    /* фон-картинка (части корабля) */
     .cell img.part {
       width: var(--ship-img-size);
       height: var(--ship-img-size);
       object-fit: contain;
       pointer-events: none;
       user-select: none;
+      display:block;
+      margin:auto;
     }
+    .rotated { transform-origin: center center; transform: rotate(90deg); }
     .ships-panel{display:flex;flex-wrap:wrap;gap:8px}
     .ship-btn{padding:8px 10px;border-radius:8px;background:#2196f3;color:#fff;border:none;min-width:42px}
     .ship-btn.selected{outline:3px solid #ffca28}
@@ -59,10 +61,9 @@
     .compact{font-size:12px}
     .label-muted{font-size:12px;color:#607d8b}
     .enemy-title{font-weight:700;margin-bottom:6px}
-    /* при вертикальном повороте элемента (используем rotate(90deg)) - центрируем */
-    .rotated { transform-origin: center center; transform: rotate(90deg); }
-    /* визуально отличаем pending */
-    .cell.pending { opacity: 0.85; }
+    .sunk-preview { box-shadow: 0 0 0 3px rgba(255,215,0,0.9), 0 8px 30px rgba(0,0,0,0.15); transform: scale(1.06); transition: transform .28s ease, box-shadow .28s ease; border-radius:6px; }
+    @keyframes reveal-sunk { 0% { opacity: 0; transform: scale(0.9); } 60% { opacity: 1; transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
+    .sunk-reveal { animation: reveal-sunk .34s cubic-bezier(.2,.9,.3,1); }
   </style>
 </head>
 <body>
@@ -73,7 +74,6 @@
     </div>
     <div class="small">PlayerID: <span id="playerIdLabel">—</span></div>
   </div>
-
   <div class="layout">
     <div class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -148,26 +148,25 @@
   </div>
 
   <!-- Shop modal (подарок) -->
-<div id="shopModal" style="display:none;position:fixed;left:0;top:0;right:0;bottom:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:1000;">
-  <div style="width:92%;max-width:420px;background:white;border-radius:14px;padding:14px;position:relative;text-align:center;box-shadow:0 10px 30px rgba(2,20,60,0.2);">
-    <button id="shopClose" style="position:absolute;right:10px;top:10px;background:transparent;border:none;font-size:18px;cursor:pointer;">✕</button>
-    <div style="font-size:18px;font-weight:700;margin-bottom:8px;">🎁 Магазин скинов</div>
-    <div id="shopModalContent" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:6px;"></div>
-    <div style="margin-top:10px;">
-      <button id="shopModalBuyAll" class="ship-btn" style="background:linear-gradient(90deg,#4caf50,#388e3c);">Купить/Открыть в боте</button>
+  <div id="shopModal" style="display:none;position:fixed;left:0;top:0;right:0;bottom:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:1000;">
+    <div style="width:92%;max-width:420px;background:white;border-radius:14px;padding:14px;position:relative;text-align:center;box-shadow:0 10px 30px rgba(2,20,60,0.2);">
+      <button id="shopClose" style="position:absolute;right:10px;top:10px;background:transparent;border:none;font-size:18px;cursor:pointer;">✕</button>
+      <div style="font-size:18px;font-weight:700;margin-bottom:8px;">🎁 Магазин скинов</div>
+      <div id="shopModalContent" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;padding:6px;"></div>
+      <div style="margin-top:10px;">
+        <button id="shopModalBuyAll" class="ship-btn" style="background:linear-gradient(90deg,#4caf50,#388e3c);">Купить/Открыть в боте</button>
+      </div>
     </div>
   </div>
-</div>
+  <script>
+/* ================== Настройки (замени) ================== */
+// ОБЯЗАТЕЛЬНО: укажи корректный Socket.IO URL с https://
+const SOCKET_URL = "https://seabattle-server-production.up.railway.app"; // <- ЗАМЕНИ на свой
+const SHOP_URL = "https://t.me/YourBotOrShop"; // <- замени на ссылку бота или магазин
 
-<script>
-/* ================== Настройки (вставь свои ссылки) ================== */
-const SOCKET_URL = "https://seabattle-server-production.up.railway.app"; // <- ОБЯЗАТЕЛЬНО https://...
-const SHOP_URL = "https://t.me/YourBotOrShop";
-
-/* ================== Скины — укажи пути к картинкам (пример для assets/skins/) ==================
-   Требуемые файлы для каждого skinId:
-     {skin}_head.png, {skin}_body.png, {skin}_tail.png, {skin}_single.png
-   Положи их в папку assets/skins/ рядом с index.html или используй CDN ссылки.
+/* ================== Скины — укажи пути к картинкам ==================
+   Положи файлы в repo/assets/skins/... или укажи CDN ссылки
+   Формат: {skin}_head.png, {skin}_body.png, {skin}_tail.png, {skin}_single.png
 ============================================================================= */
 const SKINS = [
   {
@@ -235,6 +234,7 @@ const shopBtn = document.getElementById('shopBtn');
 const shopCards = document.getElementById('shopCards');
 const dbg = document.getElementById('dbg');
 
+/* ================== State ================== */
 let socket = null;
 let currentMatchId = null;
 let currentTurn = null;
@@ -249,13 +249,13 @@ let selectedSize = null;
 let orientation = 'H';
 let eraseMode = false;
 
-/* ================== Shop state ================== */
-let ownedSkins = JSON.parse(localStorage.getItem('owned_skins') || '["blue"]'); // give 'blue' by default
+/* ================== Shop state (local fallback) ================== */
+let ownedSkins = JSON.parse(localStorage.getItem('owned_skins') || '["blue"]');
 let equippedSkin = localStorage.getItem('equipped_skin') || 'blue';
 
 /* ================== Helpers ================== */
 function logDbg(msg){ if(!dbg) return; dbg.style.display='block'; try{ dbg.innerText = typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2); }catch(e){ dbg.innerText = String(msg); } }
-function coords(idx){ return { x: idx % 10, y: Math.floor(idx / 10) }; }
+    function coords(idx){ return { x: idx % 10, y: Math.floor(idx / 10) }; }
 function cellIndex(x,y){ return y*10 + x; }
 function cellsFor(start,size,orient){
   const p = coords(start); const cells=[];
@@ -265,12 +265,10 @@ function cellsFor(start,size,orient){
 }
 function adjacentCellsOf(c){ const {x,y}=coords(c); const out=[]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const nx=x+dx, ny=y+dy; if(nx>=0&&nx<10&&ny>=0&&ny<10) out.push(cellIndex(nx,ny)); } return out; }
 function overlapsOrAdjacent(cells){ const occ = new Set(placed.flatMap(s=>s.cells)); for(const c of cells){ if(occ.has(c)) return {overlap:true}; for(const n of adjacentCellsOf(c)) if(occ.has(n)) return {adjacent:true,at:n}; } return null; }
-
 function getSkinById(id){ return SKINS.find(s => s.id === id) || SKINS[0]; }
 
 /* ================== Build grids ================== */
 function buildFields(){
-  // enemyField (big)
   enemyField.innerHTML = '';
   for(let i=0;i<100;i++){
     const c = document.createElement('div');
@@ -280,7 +278,6 @@ function buildFields(){
     c.addEventListener('touchend', function(e){ e.preventDefault(); onEnemyClick.call(this,e); });
     enemyField.appendChild(c);
   }
-  // myField (small)
   myField.innerHTML = '';
   for(let i=0;i<100;i++){
     const c = document.createElement('div');
@@ -301,7 +298,7 @@ function renderShipsPanel(){
     const btn = document.createElement('button');
     btn.className = 'ship-btn' + (selectedSize===size ? ' selected' : '');
     btn.type='button';
-    btn.innerText = `${size} × ${left}`;
+    btn.innerText = ${size} × ${left};
     function handler(e){ e.preventDefault(); if(left<=0){ updateStatus('Нет таких кораблей'); return; } selectedSize = (selectedSize===size)?null:size; renderShipsPanel(); updateStatus(); }
     btn.addEventListener('click', handler);
     btn.addEventListener('touchend', function(e){ e.preventDefault(); handler(e); });
@@ -309,12 +306,9 @@ function renderShipsPanel(){
   });
 }
 
-/* render myField: put image elements for ship parts based on currently equippedSkin */
 function renderAll(){
-  // clear myField styles and children images
+  // myField
   document.querySelectorAll('#myField .cell').forEach(c=>{ c.classList.remove('occupied','hit','miss','pending','sunk'); c.style.transform=''; c.innerHTML=''; });
-
-  // apply ships with images
   const skin = getSkinById(equippedSkin);
   placed.forEach(ship => {
     const parts = ship.cells;
@@ -328,7 +322,6 @@ function renderAll(){
       else if(i === parts.length - 1) partName = 'tail';
       const url = skin.parts && skin.parts[partName];
       if(url){
-        // create img element (so hit/miss classes still work)
         const img = document.createElement('img');
         img.className = 'part' + (ship.orientation === 'V' ? ' rotated' : '');
         img.draggable = false;
@@ -338,10 +331,6 @@ function renderAll(){
         el.style.background = 'var(--occupied)';
       }
       el.classList.add('occupied');
-      if(i===0) {
-        // show small size number on head optionally
-        // el.textContent = ship.size;
-      }
     });
   });
 
@@ -350,7 +339,6 @@ function renderAll(){
   updateStatus();
 }
 
-/* ================== Placement helpers & handlers ================== */
 function allPlaced(){ return Object.values(shipsPool).every(v=>v===0); }
 
 function placeShipAt(startIdx,size,orient){
@@ -403,10 +391,9 @@ function onEnemyClick(e){
   if(!socket) initSocket();
   socket.emit('shoot', { matchId: currentMatchId, playerId: PLAYER_ID, x, y });
   el.classList.add('pending');
-  updateStatus(`Выстрел: ${x},${y} — ждём ответа`);
+  updateStatus(Выстрел: ${x},${y} — ждём ответа);
 }
-
-/* ================== Socket.IO integration ================== */
+    /* ================== Socket.IO integration ================== */
 function initSocket(){
   if(socket) return;
   if(!SOCKET_URL || !SOCKET_URL.startsWith('http')){ updateStatus('Неправильный SOCKET_URL'); return; }
@@ -416,7 +403,6 @@ function initSocket(){
   socket.on('connect_error', (err)=>{ logDbg('connect_error: ' + (err && err.message ? err.message : err)); });
   socket.on('disconnect', (reason)=>{ logDbg('disconnect: ' + reason); });
 
-  // profile response: server may send owned skins & equipped skin on identify
   socket.on('profile', d => {
     if(!d) return;
     if(Array.isArray(d.ownedSkins)) { ownedSkins = d.ownedSkins; localStorage.setItem('owned_skins', JSON.stringify(ownedSkins)); }
@@ -446,20 +432,16 @@ function initSocket(){
     currentTurn = d.turn;
     turnLabel.innerText = String(currentTurn);
     updateStatus('Матч начался — ход: ' + d.turn);
-    // clear enemy field marks and enable/disable click by turn
     enemyField.querySelectorAll('.cell').forEach(c=> c.classList.remove('pending','miss','hit','sunk'));
     myField.querySelectorAll('.cell').forEach(c=> c.classList.remove('pending','miss','hit','sunk'));
     updateStatus(String(currentTurn) === String(PLAYER_ID) ? 'Ваш ход — кликай по полю врага' : 'Ход соперника — ожидайте');
   });
 
-  // shot_result: both players get this
-  // server should emit: { matchId, shooter, x, y, result: 'miss'|'hit'|'sunk', sunkShip?: { cells:[{x,y}], skinId?, orientation?, size? }, finished?, winner?, newTurn }
   socket.on('shot_result', d=>{
     try{
       if(!d) return;
       const idx = cellIndex(d.x, d.y);
       if(String(d.shooter) === String(PLAYER_ID)){
-        // I shot — mark enemy field
         const cell = enemyField.children[idx];
         if(cell){
           cell.classList.remove('pending');
@@ -467,13 +449,12 @@ function initSocket(){
           else if(d.result === 'hit') cell.classList.add('hit');
           else if(d.result === 'sunk') cell.classList.add('sunk');
         }
-        // if sunkShip provided - draw parts on enemyField using owner skin (prefer skinId from server, else use equippedSkin)
         if(d.sunkShip && Array.isArray(d.sunkShip.cells)){
           const skinId = d.sunkShip.skinId || equippedSkin;
           drawShipOnGrid(enemyField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
+          previewSunkOnGrid(enemyField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
         }
       } else {
-        // Opponent shot at me - mark myField
         const cell = myField.children[idx];
         if(cell){
           if(d.result === 'miss') cell.classList.add('miss');
@@ -481,13 +462,12 @@ function initSocket(){
           else if(d.result === 'sunk') cell.classList.add('sunk');
         }
         if(d.sunkShip && Array.isArray(d.sunkShip.cells)){
-          // show sunk on myField (owner skin likely equals my skin)
           const skinId = d.sunkShip.skinId || equippedSkin;
           drawShipOnGrid(myField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
+          previewSunkOnGrid(myField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
         }
       }
 
-      // update turn
       currentTurn = d.newTurn;
       turnLabel.innerText = String(currentTurn || '—');
       updateStatus(`Результат: ${d.result} (${d.x},${d.y})`);
@@ -496,8 +476,6 @@ function initSocket(){
       }
     } catch(e){ console.error(e); logDbg(e); }
   });
-
-  // purchase result from server
   socket.on('purchase_result', data => {
     if(!data) return;
     if(data.ok){
@@ -530,11 +508,9 @@ function drawShipOnGrid(gridEl, orderedCells, orientation, skinId){
   if(!skin) return;
   const size = orderedCells.length;
   orderedCells.forEach((coordOrIdx, i) => {
-    // coord either {x,y} or numeric index
     let idx = (typeof coordOrIdx === 'number') ? coordOrIdx : cellIndex(coordOrIdx.x, coordOrIdx.y);
     const el = gridEl.children[idx];
     if(!el) return;
-    // cleanup existing children
     el.innerHTML = '';
     let partName='body';
     if(size === 1) partName='single';
@@ -550,8 +526,26 @@ function drawShipOnGrid(gridEl, orderedCells, orientation, skinId){
     } else {
       el.style.background = 'var(--occupied)';
     }
-    el.classList.add(partName === 'single' ? 'sunk' : 'sunk');
+    el.classList.add('sunk');
   });
+}
+
+/* preview sunk with glow */
+function previewSunkOnGrid(gridEl, orderedCells, orientation, skinId){
+  orderedCells.forEach(coordOrIdx => {
+    const idx = (typeof coordOrIdx === 'number') ? coordOrIdx : cellIndex(coordOrIdx.x, coordOrIdx.y);
+    const el = gridEl.children[idx];
+    if(!el) return;
+    el.classList.add('sunk-preview','sunk-reveal');
+  });
+  setTimeout(()=> {
+    orderedCells.forEach(coordOrIdx => {
+      const idx = (typeof coordOrIdx === 'number') ? coordOrIdx : cellIndex(coordOrIdx.x, coordOrIdx.y);
+      const el = gridEl.children[idx];
+      if(!el) return;
+      el.classList.remove('sunk-preview');
+    });
+  }, 1600);
 }
 
 /* ================== Buttons -> socket emits ================== */
@@ -594,8 +588,7 @@ resignBtn.addEventListener('click', ()=>{
   socket.emit('resign', { matchId: currentMatchId, playerId: PLAYER_ID });
   updateStatus('Вы сдались');
 });
-
-/* ================== Shop UI: render, buy, equip ================== */
+    /* ================== Shop UI: render, buy, equip ================== */
 function renderShopUI(){
   shopCards.innerHTML = '';
   SKINS.forEach(skin=>{
@@ -606,7 +599,6 @@ function renderShopUI(){
     item.style.padding = '6px';
     item.style.border = '1px solid #eee';
     item.style.borderRadius = '8px';
-    // preview
     const preview = document.createElement('img');
     preview.src = skin.parts.head; preview.style.width='56px'; preview.style.height='36px'; preview.style.objectFit='cover'; preview.style.borderRadius='6px';
     item.appendChild(preview);
@@ -633,7 +625,6 @@ function equipSkinLocal(skinId){
   if(!ownedSkins.includes(skinId)) return;
   equippedSkin = skinId;
   localStorage.setItem('equipped_skin', equippedSkin);
-  // notify server (optional)
   if(socket && socket.connected) socket.emit('equip_skin', { playerId: PLAYER_ID, skinId });
   renderShopUI();
   renderAll();
@@ -646,35 +637,12 @@ function buySkinRequest(skinId){
     updateStatus('Покупка: отправлен запрос на сервер...');
     return;
   }
-  // fallback open shop link
   updateStatus('Открываю магазин в боте — купи stars и вернись');
   if(WebApp && WebApp.openLink){ try{ WebApp.openLink(SHOP_URL); return; } catch(e){} }
   window.open(SHOP_URL, '_blank');
 }
 
-/* ================== Init: build fields, ship UI, shop ================== */
-function initUI(){
-  buildFields();
-  renderShipsPanel();
-  renderAll();
-  renderShopUI();
-  modeLabel.innerText = 'railway';
-  updateStatus('Готово — подключись к серверу');
-  dbg.style.display = 'none';
-}
-initUI();
-
-/* ================== BEFORE EXIT: load local storage owned/equipped ================== */
-(function loadLocalShop(){
-  const lsOwned = localStorage.getItem('owned_skins');
-  if(lsOwned) try{ ownedSkins = JSON.parse(lsOwned); } catch(e){}
-  const eq = localStorage.getItem('equipped_skin');
-  if(eq) equippedSkin = eq;
-  renderShopUI();
-  renderAll();
-})();
-
-// modal controls
+/* ================== Shop modal controls (inserted near end) ================== */
 const shopModal = document.getElementById('shopModal');
 const shopModalContent = document.getElementById('shopModalContent');
 const shopClose = document.getElementById('shopClose');
@@ -683,7 +651,6 @@ const shopModalBuyAll = document.getElementById('shopModalBuyAll');
 shopBtn.addEventListener('click', ()=> openShopModal());
 shopClose.addEventListener('click', ()=> closeShopModal());
 shopModalBuyAll.addEventListener('click', ()=> {
-  // fallback open bot / shop link
   if(WebApp && WebApp.openLink){ try{ WebApp.openLink(SHOP_URL); return; } catch(e){} }
   window.open(SHOP_URL, '_blank');
 });
@@ -701,11 +668,10 @@ function renderShopModalContent(){
   SKINS.forEach(skin=>{
     const row = document.createElement('div');
     row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.padding='8px'; row.style.borderRadius='8px';
-    // preview img
     const img = document.createElement('img'); img.src = skin.parts.head; img.style.width='72px'; img.style.height='44px'; img.style.objectFit='cover'; img.style.borderRadius='6px';
     row.appendChild(img);
     const info = document.createElement('div'); info.style.flex='1';
-    info.innerHTML = `<div style="font-weight:700">${skin.name}</div><div class="small">Цена: ${skin.price} stars</div>`;
+    info.innerHTML = <div style="font-weight:700">${skin.name}</div><div class="small">Цена: ${skin.price} stars</div>;
     row.appendChild(info);
     const btn = document.createElement('button'); btn.className='ship-btn';
     const owned = ownedSkins.includes(skin.id);
@@ -719,33 +685,34 @@ function renderShopModalContent(){
     shopModalContent.appendChild(row);
   });
 }
-  
-/* ================== Image size recommendation & notes ==================
+ /* ================== Init UI ================== */
+function initUI(){
+  buildFields();
+  renderShipsPanel();
+  renderAll();
+  renderShopUI();
+  modeLabel.innerText = 'railway';
+  updateStatus('Готово — подключись к серверу');
+  dbg.style.display = 'none';
+}
+initUI();
 
-  Рекомендации по подготовке картинок (важно для аккуратной отрисовки):
+/* ================== load local shop state ================== */
+(function loadLocalShop(){
+  const lsOwned = localStorage.getItem('owned_skins');
+  if(lsOwned) try{ ownedSkins = JSON.parse(lsOwned); } catch(e){}
+  const eq = localStorage.getItem('equipped_skin');
+  if(eq) equippedSkin = eq;
+  renderShopUI();
+  renderAll();
+})();
 
-  - Базовый размер для части корабля (one cell image): 64x64 px.
-    Это даёт хороший результат на большинстве телефонов. В CSS переменная --ship-img-size управляет этим.
-  - Имей 4 файла на скин:
-      {skin}_head.png   (например: blue_head.png)
-      {skin}_body.png
-      {skin}_tail.png
-      {skin}_single.png  (для 1-клеточных кораблей)
-    Все файлы — квадратные 64x64, с прозрачным фоном (PNG или WebP).
-  - Если часть корабля вертикальная, клиент поворачивает элемент (rotate(90deg)). Поэтому
-    готовить отдельную вертикальную версию не обязательно — поворот обрабатывается CSS.
-  - Если хочешь более высокое качество на Retina, положи 128x128 версии (или WebP) и используй CSS width/height 64px — браузер сам подгонит.
-  - Храни картинки в репозитории под `assets/skins/` или на CDN (jsDelivr), тогда путь будет как в SKINS.
-
-  Пример структуры:
-    /assets/skins/blue_head.png
-    /assets/skins/blue_body.png
-    /assets/skins/blue_tail.png
-    /assets/skins/blue_single.png
-    /assets/skins/red_head.png  ... и т.д.
-
-===================================================================== */
+/* ================== Notes: image size recommendation ==================
+   - Use 64x64 px PNG/WebP for each part (head/body/tail/single).
+   - Optionally add 128x128 for retina; browser scales down.
+   - Put files in assets/skins/ or use CDN and update SKINS.parts paths.
+============================================================================= */
 
 </script>
 </body>
-</html>
+</html>   

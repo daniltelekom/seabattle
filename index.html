@@ -579,21 +579,29 @@ function initSocket(){
 
   socket.on('placement_update',()=>updateStatus('Противник отправил расстановку'));
 
-  socket.on('match_started',d=>{
-    currentMatchId=d.matchId;
-    currentTurn=d.turn;
-    matchFinished=false;
-    turnLabel.innerText=String(currentTurn);
-    readyBtn.innerText='✅ Готов';
-    resignBtn.innerText='Сдаться';
+  socket.on('match_started', d => {
+  currentMatchId = d.matchId;
+  currentTurn   = d.turn;
+  matchLabel.innerText = currentMatchId;
+  turnLabel.innerText  = String(currentTurn || '—');
 
-    enemyField.querySelectorAll('.cell').forEach(c=>c.classList.remove('pending','miss','hit','sunk'));
-    myField.querySelectorAll('.cell').forEach(c=>c.classList.remove('pending','miss','hit','sunk'));
-
-    updateStatus(String(currentTurn)===String(PLAYER_ID) ?
-      'Матч начался — ваш ход, кликай по полю врага' :
-      'Матч начался — ход соперника');
+  // Поле врага — полностью очистить
+  enemyField.querySelectorAll('.cell').forEach(c => {
+    c.className = 'cell';     // убираем все классы кроме базового
+    c.innerHTML = '';         // убираем содержимое (иконки, точки и т.д.)
   });
+
+  // Наше поле — убираем только метки выстрелов, корабли рисуем из placed
+  myField.querySelectorAll('.cell').forEach(c => {
+    c.classList.remove('miss','hit','pending','sunk','sunk-preview','sunk-reveal');
+  });
+
+  updateStatus(
+    String(currentTurn) === String(PLAYER_ID)
+      ? 'Матч начался — твой ход, стреляй по полю врага'
+      : 'Матч начался — ход соперника, жди'
+  );
+});
 
   socket.on('shot_result',d=>{
     if(!d) return;
@@ -635,17 +643,37 @@ function initSocket(){
     updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
   });
 
-  socket.on('rematch_start',d=>{
-    currentMatchId=d.matchId;
-    currentTurn=d.turn;
-    matchFinished=false;
-    clearAll();
-    enemyField.querySelectorAll('.cell').forEach(c=>c.classList.remove('pending','miss','hit','sunk'));
-    myField.querySelectorAll('.cell').forEach(c=>c.classList.remove('pending','miss','hit','sunk'));
-    readyBtn.innerText='✅ Готов';
-    resignBtn.innerText='Сдаться';
-    updateStatus('Реванш! Расставь корабли и нажми Готов');
+  socket.on('rematch_started', d => {
+  if (!d) return;
+
+  // тот же матч, новый раунд
+  currentMatchId = d.matchId;
+  currentTurn    = d.turn;
+  matchLabel.innerText = currentMatchId;
+  turnLabel.innerText  = String(currentTurn || '—');
+
+  // ЧИСТИМ ПОЛЕ ВРАГА ПОЛНОСТЬЮ
+  enemyField.querySelectorAll('.cell').forEach(c => {
+    c.className = 'cell';
+    c.innerHTML = '';
   });
+
+  // ЧИСТИМ НАШЕ ПОЛЕ ОТ ВЫСТРЕЛОВ
+  myField.querySelectorAll('.cell').forEach(c => {
+    c.className = 'cell';
+    c.innerHTML = '';
+  });
+
+  // Сбрасываем свою расстановку и стейт кораблей
+  clearAll(); // у тебя уже есть эта функция, она пересобирает shipsPool/placed и перерисовывает myField
+
+  // Прячем модалку конца игры, если ещё открыта
+  if (typeof hideEndModal === 'function') {
+    hideEndModal();
+  }
+
+  updateStatus('Реванш! Расставь корабли и нажми Готов');
+});
 
   socket.on('rematch_pending',()=>{
     updateStatus('Ждём решение соперника по реваншу...');

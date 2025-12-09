@@ -34,10 +34,10 @@
     .small-grid{width:260px;display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
     .cell{aspect-ratio:1;background:var(--cell);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;user-select:none;overflow:hidden;position:relative}
     .cell.occupied{color:white}
-    .cell.miss{background:var(--miss)}
-    .cell.hit{background:var(--hit);color:white}
     .cell.pending{background:var(--pending)}
-    .cell.sunk{background:var(--sunk);color:white}
+.cell.miss{background:var(--miss)}
+.cell.hit{background:var(--hit);color:white}
+.cell.sunk{background:var(--sunk);color:white}
     .cell img.part {
       width: var(--ship-img-size);
       height: var(--ship-img-size);

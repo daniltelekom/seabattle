@@ -392,22 +392,11 @@ function onEnemyClick(e){
     return;
   }
 
-  // уже стреляли сюда – просто не даём ещё раз
-  if (
-    el.classList.contains('miss') ||
-    el.classList.contains('hit') ||
-    el.classList.contains('sunk') ||
-    el.classList.contains('pending')
-  ) {
-    updateStatus('Вы уже стреляли сюда');
-    return;
-  }
-
   const { x, y } = coords(idx);
 
   if (!socket) initSocket();
 
-  // помечаем как «ожидаем ответа»
+  // помечаем клетку как «ждём ответа»
   el.classList.add('pending');
   updateStatus(`Выстрел: ${x},${y} — ждём ответа`);
 
@@ -416,14 +405,15 @@ function onEnemyClick(e){
     'shoot',
     { matchId: currentMatchId, playerId: PLAYER_ID, x, y },
     (err, res) => {
-      // ACK пришёл сразу от сервера
+      // ACK от сервера
       if (err || !res || res.ok === false) {
+        // снимаем pending, т.к. выстрел не засчитан
         el.classList.remove('pending');
 
         if (res && res.error === 'not_your_turn') {
           updateStatus('Сейчас не ваш ход');
         } else if (res && res.error === 'already_shot') {
-          updateStatus('Сюда уже стреляли');
+          updateStatus('Вы уже стреляли сюда');
         } else if (res && res.error === 'match_not_found') {
           updateStatus('Матч не найден');
         } else {
@@ -432,8 +422,8 @@ function onEnemyClick(e){
         return;
       }
 
-      // Основной результат (hit/miss/sunk) всё равно придёт в
-      // socket.on('shot_result'), там уже обновляем клетки.
+      // Всё норм, реальный результат прилетит в socket.on('shot_result'),
+      // там мы уже покрасим клетку hit/miss/sunk и уберём pending
     }
   );
 }

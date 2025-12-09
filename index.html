@@ -476,32 +476,36 @@ function initSocket(){
     try{
       if(!d) return;
       const idx = cellIndex(d.x, d.y);
-      if(String(d.shooter) === String(PLAYER_ID)){
-        const cell = enemyField.children[idx];
-        if(cell){
-          cell.classList.remove('pending');
-          if(d.result === 'miss') cell.classList.add('miss');
-          else if(d.result === 'hit') cell.classList.add('hit');
-          else if(d.result === 'sunk') cell.classList.add('sunk');
-        }
-        if(d.sunkShip && Array.isArray(d.sunkShip.cells)){
-          const skinId = d.sunkShip.skinId || equippedSkin;
-          drawShipOnGrid(enemyField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
-          previewSunkOnGrid(enemyField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
-        }
-      } else {
-        const cell = myField.children[idx];
-        if(cell){
-          if(d.result === 'miss') cell.classList.add('miss');
-          else if(d.result === 'hit') cell.classList.add('hit');
-          else if(d.result === 'sunk') cell.classList.add('sunk');
-        }
-        if(d.sunkShip && Array.isArray(d.sunkShip.cells)){
-          const skinId = d.sunkShip.skinId || equippedSkin;
-          drawShipOnGrid(myField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
-          previewSunkOnGrid(myField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
-        }
-      }
+      if (String(d.shooter) === String(PLAYER_ID)) {
+  const cell = enemyField.children[idx];
+  if (cell) {
+    // полностью очищаем статусы выстрела и только потом ставим нужный
+    cell.classList.remove('pending','miss','hit','sunk');
+    if (d.result === 'miss') cell.classList.add('miss');
+    else if (d.result === 'hit') cell.classList.add('hit');
+    else if (d.result === 'sunk') cell.classList.add('sunk');
+  }
+
+  if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+    const skinId = d.sunkShip.skinId || equippedSkin;
+    drawShipOnGrid(enemyField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
+    previewSunkOnGrid(enemyField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
+  }
+} else {
+  const cell = myField.children[idx];
+  if (cell) {
+    cell.classList.remove('pending','miss','hit','sunk');
+    if (d.result === 'miss') cell.classList.add('miss');
+    else if (d.result === 'hit') cell.classList.add('hit');
+    else if (d.result === 'sunk') cell.classList.add('sunk');
+  }
+
+  if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+    const skinId = d.sunkShip.skinId || equippedSkin;
+    drawShipOnGrid(myField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
+    previewSunkOnGrid(myField, d.sunkShip.cells, d.sunkShip.orientation || 'H', skinId);
+  }
+}
 
       currentTurn = d.newTurn;
       turnLabel.innerText = String(currentTurn || '—');

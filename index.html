@@ -129,35 +129,40 @@
 
   <div class="layout">
     <!-- Лево: поля -->
-    <div class="panel">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="ships-panel" id="shipsPanel"></div>
-        <div style="display:flex;gap:8px">
-          <button id="rotateBtn" class="ship-btn">Повернуть (H)</button>
-          <button id="autoBtn" class="ship-btn">Авто</button>
-        </div>
-      </div>
+   <div class="panel">
 
-      <div id="fieldArea" class="field-wrap" style="margin-top:12px">
-        <div>
-          <div class="enemy-title">Поле противника (клик — стрелять)</div>
-          <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
-        </div>
-
-        <div style="margin-top:12px">
-          <div class="label-muted">Ваше поле</div>
-          <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-        <div id="status" class="small">Расставьте корабли и нажмите Готов.</div>
-        <div style="display:flex;gap:8px">
-          <button id="undoBtn" class="ship-btn">↶ Отменить</button>
-          <button id="eraseModeBtn" class="ship-btn">Удаление: выкл</button>
-        </div>
-      </div>
+  <!-- СНАЧАЛА ПОЛЯ -->
+  <div id="fieldArea" class="field-wrap" style="margin-top:4px">
+    <div>
+      <div class="enemy-title">Поле противника (клик — стрелять)</div>
+      <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
     </div>
+
+    <div style="margin-top:12px">
+      <div class="label-muted">Ваше поле</div>
+      <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
+    </div>
+  </div>
+
+  <!-- ПОТОМ КНОПКИ КОРАБЛЕЙ -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+    <div class="ships-panel" id="shipsPanel"></div>
+    <div style="display:flex;gap:8px">
+      <button id="rotateBtn" class="ship-btn">Повернуть (H)</button>
+      <button id="autoBtn" class="ship-btn">Авто</button>
+    </div>
+  </div>
+
+  <!-- НИЖЕ СТАТУС + ОТМЕНА/УДАЛЕНИЕ -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+    <div id="status" class="small">Расставьте корабли и нажмите Готов.</div>
+    <div style="display:flex;gap:8px">
+      <button id="undoBtn" class="ship-btn">↶ Отменить</button>
+      <button id="eraseModeBtn" class="ship-btn">Удаление: выкл</button>
+    </div>
+  </div>
+
+</div>
 
     <!-- Право: меню -->
     <div>

@@ -918,37 +918,30 @@ leaveBtn.addEventListener('click',()=>{
 });
 
 /* Ready: до конца — отправка расстановки; после конца — реванш */
-readyBtn.addEventListener('click',()=>{
-  if(matchFinished){
-    if(!socket) initSocket();
-    if(!currentMatchId){ updateStatus('Матч уже закрыт'); return; }
-    socket.emit('request_rematch',{matchId:currentMatchId,playerId:PLAYER_ID});
-    updateStatus('Запрошен реванш, ждём соперника');
+readyBtn.addEventListener('click', () => {
+  if (!allPlaced()) {
+    updateStatus('Сначала размести все корабли');
     return;
   }
-  if(!allPlaced()){ updateStatus('Сначала размести все корабли'); return; }
   initSocket();
-  socket.emit('place_ships',{matchId:currentMatchId,playerId:PLAYER_ID,ships:placed});
+  socket.emit('place_ships', {
+    matchId: currentMatchId,
+    playerId: PLAYER_ID,
+    ships: placed
+  });
   updateStatus('Расстановка отправлена');
 });
 
 /* Resign: до конца — сдаться; после конца — выйти в меню */
-resignBtn.addEventListener('click',()=>{
-  if(matchFinished){
-    if(!socket) initSocket();
-    socket.emit('leave',{playerId:PLAYER_ID,matchId:currentMatchId});
-    currentMatchId=null;
-    matchLabel.innerText='—';
-    updateStatus('Вы вышли в меню');
-    matchFinished=false;
-    return;
+resignBtn.addEventListener('click', () => {
+  if (!socket) initSocket();
+  if (currentMatchId) {
+    socket.emit('leave', { playerId: PLAYER_ID, matchId: currentMatchId });
   }
-  if(!socket) initSocket();
-  socket.emit('leave',{playerId:PLAYER_ID,matchId:currentMatchId});
-  currentMatchId=null;
-  matchLabel.innerText='—';
-  matchFinished=false;
-  updateStatus('Вы сдались');
+  currentMatchId = null;
+  matchLabel.innerText = '—';
+  matchFinished = false;
+  updateStatus('Вы вышли из матча');
 });
 
 /* ====== Магазин (только модалка) ====== */

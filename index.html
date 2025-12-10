@@ -531,6 +531,7 @@ const modeLabel      = document.getElementById('modeLabel');
 const shopBtn        = document.getElementById('shopBtn');
 const dbg            = document.getElementById('dbg');
 const turnBanner     = document.getElementById('turnBanner');
+const ratingLabel      = document.getElementById('ratingLabel');  
 
 /* Главное меню + поиск */
 const mainMenu      = document.getElementById('mainMenu');
@@ -556,6 +557,33 @@ let socket         = null;
 let currentMatchId = null;
 let currentTurn    = null;
 let matchFinished  = false;
+
+  // Рейтинг и статистика (локально на устройстве)
+let playerRating = parseInt(localStorage.getItem('rating') || '1000', 10);
+let totalWins    = parseInt(localStorage.getItem('wins')   || '0',    10);
+let totalLosses  = parseInt(localStorage.getItem('losses') || '0',    10);
+
+// Звания по рейтингу
+function getRankName(r) {
+  if (r < 900)  return 'Новобранец';
+  if (r < 1000) return 'Матрос';
+  if (r < 1100) return 'Капрал';
+  if (r < 1200) return 'Старшина';
+  if (r < 1300) return 'Лейтенант';
+  if (r < 1400) return 'Капитан';
+  if (r < 1500) return 'Коммодор';
+  return 'Адмирал';
+}
+
+// Обновляем надпись в правой панели
+function updateRatingUI() {
+  if (!ratingLabel) return;
+  const rank = getRankName(playerRating);
+  ratingLabel.textContent = `${playerRating} (${rank})`;
+}
+
+// Сразу один раз при загрузке
+updateRatingUI();
 
 /* Расстановка */
 const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
@@ -893,13 +921,18 @@ function onEnemyClick(e){
 
 /* ====== модалка конца ====== */
 function showEndModal(winnerId) {
+  let baseText;
   if (winnerId && String(winnerId) === String(PLAYER_ID)) {
-    endModalText.textContent = 'Ты выиграл! 🎉';
+    baseText = 'Ты выиграл! 🎉';
   } else if (winnerId) {
-    endModalText.textContent = 'Победил соперник.';
+    baseText = 'Победил соперник.';
   } else {
-    endModalText.textContent = 'Матч завершён.';
+    baseText = 'Матч завершён.';
   }
+
+  const rank = getRankName(playerRating);
+  const stats = `\nРейтинг: ${playerRating} (${rank})\nПобеды: ${totalWins}  Поражения: ${totalLosses}`;
+  endModalText.textContent = baseText + stats;
   endModal.style.display = 'flex';
 }
 function hideEndModal() { endModal.style.display = 'none'; }
@@ -1005,62 +1038,89 @@ function initSocket(){
     updateSidePanelState();
   });
 
-  socket.on('shot_result', d => {
-    if (!d) return;
-    const idx = cellIndex(d.x, d.y);
+socket.on('shot_result', d => {
+  if (!d) return;
+  const idx = cellIndex(d.x, d.y);
 
-    if (String(d.shooter) === String(PLAYER_ID)) {
-      const cell = enemyField.children[idx];
-      if (cell) {
-        cell.classList.remove('pending');
-        if (d.result === 'miss') {
-          cell.classList.add('miss');
-          cell.textContent = '•';
-        } else if (d.result === 'hit') {
-          cell.classList.add('hit');
-          cell.textContent = '×';
-        } else if (d.result === 'sunk') {
-          cell.classList.add('sunk');
-          cell.textContent = '×';
-        }
+  if (String(d.shooter) === String(PLAYER_ID)) {
+    // МЫ стреляем по enemyField
+    const cell = enemyField.children[idx];
+    if (cell) {
+      cell.classList.remove('pending');
+      if (d.result === 'miss') {
+        cell.classList.add('miss');
+        cell.textContent = '•';
+      } else if (d.result === 'hit') {
+        cell.classList.add('hit');
+        cell.textContent = '×';
+      } else if (d.result === 'sunk') {
+        cell.classList.add('sunk');
+        cell.textContent = '×';
       }
-      if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
-        markDotsAroundShip(enemyField, d.sunkShip.cells);
+    }
+
+    // если утопили корабль — ставим точки вокруг него
+    if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+      markDotsAroundShip(enemyField, d.sunkShip.cells);
+    }
+
+  } else {
+    // по НАС стреляют (myField)
+    const cell = myField.children[idx];
+    if (cell) {
+      if (d.result === 'miss') {
+        cell.classList.add('miss');
+        cell.textContent = '•';
+      } else if (d.result === 'hit') {
+        cell.classList.add('hit');
+        cell.textContent = '×';
+      } else if (d.result === 'sunk') {
+        cell.classList.add('sunk');
+        cell.textContent = '×';
       }
+    }
+
+    // утопили наш корабль — тоже точки вокруг
+    if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+      markDotsAroundShip(myField, d.sunkShip.cells);
+    }
+  }
+
+  // чей ход теперь
+  currentTurn = d.newTurn;
+  const myTurnNow = !d.finished && String(currentTurn) === String(PLAYER_ID);
+  turnLabel.innerText = d.finished ? '—' : String(currentTurn || '—');
+
+  const turnText = d.finished
+    ? ''
+    : (myTurnNow ? ' Твой ход.' : ' Ход соперника.');
+  updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
+
+  // ==== НОВОЕ: обновляем рейтинг при завершении матча ====
+  if (d.finished) {
+    matchFinished = true;
+
+    const iWon = d.winner && String(d.winner) === String(PLAYER_ID);
+    if (iWon) {
+      totalWins++;
+      playerRating += 25;         // +25 за победу
     } else {
-      const cell = myField.children[idx];
-      if (cell) {
-        if (d.result === 'miss') {
-          cell.classList.add('miss');
-          cell.textContent = '•';
-        } else if (d.result === 'hit') {
-          cell.classList.add('hit');
-          cell.textContent = '×';
-        } else if (d.result === 'sunk') {
-          cell.classList.add('sunk');
-          cell.textContent = '×';
-        }
-      }
-      if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
-        markDotsAroundShip(myField, d.sunkShip.cells);
-      }
+      totalLosses++;
+      playerRating = Math.max(0, playerRating - 15); // -15 за проигрыш, не уходим в минус
     }
 
-    currentTurn = d.newTurn;
-    const myTurnNow = !d.finished && String(currentTurn) === String(PLAYER_ID);
-    turnLabel.innerText = d.finished ? '—' : String(currentTurn || '—');
-    const turnText = d.finished
-      ? ''
-      : (myTurnNow ? ' Твой ход.' : ' Ход соперника.');
-    updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
-    updateTurnBanner();
+    // сохраняем в localStorage
+    localStorage.setItem('rating', String(playerRating));
+    localStorage.setItem('wins',   String(totalWins));
+    localStorage.setItem('losses', String(totalLosses));
 
-    if (d.finished) {
-      matchFinished = true;
-      updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
-      showEndModal(d.winner);
-    }
-  });
+    // обновляем UI
+    updateRatingUI();
+
+    updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
+    showEndModal(d.winner);   // теперь модалка уже видит новый рейтинг
+  }
+});
 
   socket.on('match_finished', d => {
     matchFinished = true;
@@ -1294,6 +1354,7 @@ function initUI(){
   renderShipsPanel();
   renderAll();
   modeLabel.innerText='railway';
+  updateRatingUI();
   updateStatus('Готово — выбери режим в главном меню');
   dbg.style.display='none';
   updateTurnBanner();

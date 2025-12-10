@@ -361,33 +361,38 @@
 
     <!-- Право: инфо/матч -->
     <div>
-      <div class="panel" style="display:flex;flex-direction:column;gap:10px">
-        <div class="label-muted">Быстрый матч</div>
-        <button id="quickPlayBtn" class="ship-btn" style="width:100%;font-size:15px;padding:10px 10px;">
-          ▶ Найти соперника
-        </button>
+      <div id="sidePanel" class="panel" style="display:flex;flex-direction:column;gap:10px">
 
-        <div class="label-muted" style="margin-top:4px;">Игра с другом</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button id="createMatchBtn" class="ship-btn">Создать</button>
-          <input id="matchIdInput" placeholder="match id" style="flex:1"/>
-          <button id="joinMatchBtn" class="ship-btn">Войти</button>
+        <!-- Всё управление матчами (убираем во время матча) -->
+        <div id="sideControls">
+          <div class="label-muted">Быстрый матч</div>
+          <button id="quickPlayBtn" class="ship-btn" style="width:100%;font-size:15px;padding:10px 10px;">
+            ▶ Найти соперника
+          </button>
+
+          <div class="label-muted" style="margin-top:4px;">Игра с другом</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="createMatchBtn" class="ship-btn">Создать</button>
+            <input id="matchIdInput" placeholder="match id" style="flex:1"/>
+            <button id="joinMatchBtn" class="ship-btn">Войти</button>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button id="leaveBtn" class="ship-btn" style="flex:1">Выйти из матча</button>
+            <button id="shopBtn" class="shop-btn" style="flex:1">Магазин</button>
+          </div>
         </div>
 
-        <div style="display:flex;gap:8px">
-          <button id="leaveBtn" class="ship-btn" style="flex:1">Выйти из матча</button>
-          <button id="shopBtn" class="shop-btn" style="flex:1">Магазин</button>
+        <!-- Информация о матче (оставляем только Match:) -->
+        <div id="sideInfo" class="compact" style="display:flex;flex-direction:column;gap:6px;">
+          <div id="infoModeRow" class="info">Mode: <span id="modeLabel">railway</span></div>
+          <div id="infoMatchRow" class="info">Match: <span id="matchLabel">—</span></div>
+          <div id="infoTurnRow" class="info">Turn: <span id="turnLabel">—</span></div>
+          <div id="infoRatingRow" class="info">Rating: <span id="ratingLabel">1000</span></div>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:6px" class="compact">
-          <div class="info">Mode: <span id="modeLabel">railway</span></div>
-          <div class="info">Match: <span id="matchLabel">—</span></div>
-          <div class="info">Turn: <span id="turnLabel">—</span></div>
-          <div class="info">Rating: <span id="ratingLabel">1000</span></div>
-        </div>
       </div>
     </div>
-  </div>
 
   <div id="dbg">DBG</div>
 
@@ -597,6 +602,29 @@ function overlapsOrAdjacent(cells){
   }
   return null;
 }
+  function updateSidePanelState() {
+  const sideControls = document.getElementById('sideControls');
+  const modeRow      = document.getElementById('infoModeRow');
+  const turnRow      = document.getElementById('infoTurnRow');
+  const ratingRow    = document.getElementById('infoRatingRow');
+
+  const hasMatch = !!currentMatchId;  // есть какой-то матч (игра/расстановка)
+
+  if (sideControls) {
+    // во время матча управление скрываем
+    sideControls.style.display = hasMatch ? 'none' : 'flex';
+    if (!hasMatch) {
+      sideControls.style.flexDirection = 'column';
+      sideControls.style.gap = '10px';
+    }
+  }
+
+  // оставляем только строку Match:, всё остальное прячем
+  if (modeRow)   modeRow.style.display   = hasMatch ? 'none' : '';
+  if (turnRow)   turnRow.style.display   = hasMatch ? 'none' : '';
+  if (ratingRow) ratingRow.style.display = hasMatch ? 'none' : '';
+}
+  
 function getSkinById(id){ return SKINS.find(s=>s.id===id) || SKINS[0]; }
 
 /* Баннер чей ход */
@@ -896,6 +924,7 @@ endExitBtn.addEventListener('click', () => {
   matchLabel.innerText = '—';
   matchFinished = false;
   updateTurnBanner();
+  updateSidePanelState();
   hideEndModal();
   updateStatus('Вы вышли в меню');
   mainMenu.style.display = 'flex';
@@ -926,6 +955,7 @@ function initSocket(){
     updateStatus('Матч создан: '+currentMatchId);
     searchOverlay.style.display='none';
     updateTurnBanner();
+    updateSidePanelState();  
   });
 
   socket.on('match_joined',d=>{
@@ -935,6 +965,7 @@ function initSocket(){
     updateStatus('В матче: '+currentMatchId);
     searchOverlay.style.display='none';
     updateTurnBanner();
+    updateSidePanelState();
   });
 
   socket.on('match_found',d=>{
@@ -946,6 +977,7 @@ function initSocket(){
     updateStatus('Найден матч: '+d.matchId);
     searchOverlay.style.display='none';
     updateTurnBanner();
+    updateSidePanelState();
   });
 
   socket.on('placement_update',()=>updateStatus('Противник отправил расстановку'));
@@ -970,6 +1002,7 @@ function initSocket(){
         : 'Матч начался — ход соперника, жди'
     );
     updateTurnBanner();
+    updateSidePanelState();
   });
 
   socket.on('shot_result', d => {
@@ -1057,6 +1090,7 @@ function initSocket(){
     matchFinished = false;
     updateStatus('Реванш! Расставь корабли и нажми Готов');
     updateTurnBanner();
+    updateSidePanelState();
   });
 
   socket.on('rematch_pending',()=>{
@@ -1073,6 +1107,7 @@ function initSocket(){
     currentMatchId=null;
     matchLabel.innerText='—';
     updateTurnBanner();
+    updateSidePanelState();
   });
 
   socket.on('purchase_result',data=>{
@@ -1141,6 +1176,7 @@ leaveBtn.addEventListener('click',()=>{
   matchLabel.innerText='—';
   matchFinished=false;
   updateTurnBanner();
+  updateSidePanelState();
   updateStatus('Вы вышли из матча');
 });
 
@@ -1167,6 +1203,7 @@ resignBtn.addEventListener('click', () => {
   matchLabel.innerText = '—';
   matchFinished = false;
   updateTurnBanner();
+  updateSidePanelState();
   updateStatus('Вы вышли из матча');
   mainMenu.style.display='flex';
 });
@@ -1260,6 +1297,7 @@ function initUI(){
   updateStatus('Готово — выбери режим в главном меню');
   dbg.style.display='none';
   updateTurnBanner();
+  updateSidePanelState();
 }
 initUI();
 

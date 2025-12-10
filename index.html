@@ -591,6 +591,7 @@ function renderAll(){
       if(size===1) partName='single';
       else if(i===0) partName='head';
       else if(i===parts.length-1) partName='tail';
+      else partName = 'body';
       const url=skin.parts && skin.parts[partName];
       if(url){
         const img=document.createElement('img');

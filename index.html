@@ -65,6 +65,17 @@
       display:block;
       margin:auto;
     }
+    .cell.dot {
+  position: relative;
+}
+.cell.dot::after {
+  content: '';
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  background: #90a4ae;  /* цвет точки */
+}
     .rotated{transform-origin:center center;transform:rotate(90deg);}
     .ships-panel{display:flex;flex-wrap:wrap;gap:8px}
     .ship-btn{

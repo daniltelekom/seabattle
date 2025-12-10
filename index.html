@@ -21,6 +21,27 @@
       --sunk:#b71c1c;
       --ship-img-size:64px;
     }
+    .turn-banner{
+  margin-top:8px;
+  margin-bottom:4px;
+  font-size:14px;
+  font-weight:600;
+  padding:4px 12px;
+  border-radius:999px;
+  background:#e0f2ff;
+  color:#072146;
+}
+
+.turn-banner.my-turn{
+  background:#c8e6c9;
+  color:#1b5e20;
+}
+
+.turn-banner.enemy-turn{
+  background:#ffe0b2;
+  color:#e65100;
+}
+    
     *{box-sizing:border-box;margin:0;padding:0}
     body{
       font-family:system-ui,Roboto,Arial;
@@ -142,18 +163,22 @@
     <!-- Лево: поля -->
    <div class="panel">
 
-  <!-- СНАЧАЛА ПОЛЯ -->
   <div id="fieldArea" class="field-wrap" style="margin-top:4px">
-    <div>
-      <div class="enemy-title">Поле противника (клик — стрелять)</div>
-      <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
-    </div>
-
-    <div style="margin-top:12px">
-      <div class="label-muted">Ваше поле</div>
-      <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
-    </div>
+  <div>
+    <div class="enemy-title">Поле противника (клик — стрелять)</div>
+    <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
   </div>
+
+  <!-- НОВОЕ: баннер чей ход -->
+  <div id="turnBanner" class="turn-banner">
+    Ждём начала матча...
+  </div>
+
+  <div style="margin-top:12px">
+    <div class="label-muted">Ваше поле</div>
+    <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
+  </div>
+</div>
 
   <!-- ПОТОМ КНОПКИ КОРАБЛЕЙ -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
@@ -318,6 +343,31 @@ const shopClose        = document.getElementById('shopClose');
 const shopModalBuyAll  = document.getElementById('shopModalBuyAll');
 
   /* Модалка конца матча */
+  const turnBanner = document.getElementById('turnBanner');
+  function updateTurnBanner() {
+  if (!turnBanner) return;
+
+  turnBanner.classList.remove('my-turn', 'enemy-turn');
+
+  if (!currentMatchId) {
+    turnBanner.textContent = 'Нет активного матча';
+    return;
+  }
+
+  if (matchFinished) {
+    turnBanner.textContent = 'Матч завершён';
+    return;
+  }
+
+  if (String(currentTurn) === String(PLAYER_ID)) {
+    turnBanner.textContent = 'Твой ход — стреляй по полю противника';
+    turnBanner.classList.add('my-turn');
+  } else {
+    turnBanner.textContent = 'Ход соперника — жди';
+    turnBanner.classList.add('enemy-turn');
+  }
+}
+  
 const endModal       = document.getElementById('endModal');
 const endModalTitle  = document.getElementById('endModalTitle');
 const endModalText   = document.getElementById('endModalText');
@@ -798,21 +848,17 @@ function initSocket(){
     updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
 
     if (d.finished) {
-      matchFinished = true;
-      readyBtn.innerText  = 'Реванш';
-      resignBtn.innerText = 'Выйти';
-      updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
-      showEndModal(d.winner);   // <-- показываем окно
-    }
+    matchFinished = true;
+    updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
+    showEndModal(d.winner);   // <-- вызываем модалку
+  }
   });
 
- socket.on('match_finished', d => {
-    matchFinished = true;
-    readyBtn.innerText  = 'Реванш';
-    resignBtn.innerText = 'Выйти';
-    updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
-    showEndModal(d.winner);
-  });
+socket.on('match_finished', d => {
+  matchFinished = true;
+  updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
+  showEndModal(d.winner);
+});
 
   socket.on('rematch_started', d => {
   if (!d) return;

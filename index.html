@@ -19,7 +19,7 @@
       --occupied:#2b9cff;
       --pending:#ffd54f;
       --sunk:#b71c1c;
-      --ship-img-size:64px;
+      --ship-img-size:95%;
     }
 
     *{box-sizing:border-box;margin:0;padding:0}
@@ -70,19 +70,19 @@
       max-width:560px;
       display:grid;
       grid-template-columns:repeat(10,1fr);
-      gap:2px;
+      gap:0,2px;
     }
     .small-grid{
       width:260px;
       display:grid;
       grid-template-columns:repeat(10,1fr);
-      gap:2px;
+      gap:0,2px;
     }
 
     .cell{
       aspect-ratio:1;
       background:var(--cell);
-      border-radius:8px;
+      border-radius:4px;
       display:flex;
       align-items:center;
       justify-content:center;

@@ -345,6 +345,53 @@ function overlapsOrAdjacent(cells){
 }
 function getSkinById(id){ return SKINS.find(s=>s.id===id) || SKINS[0]; }
 
+  // ставим точки вокруг утопленного корабля
+function markDotsAroundShip(gridEl, orderedCells) {
+  if (!orderedCells || !orderedCells.length) return;
+
+  // приводим список клеток корабля к наборам индексов (0–99)
+  const shipIdxSet = new Set(
+    orderedCells.map(c =>
+      (typeof c === 'number') ? c : cellIndex(c.x, c.y)
+    )
+  );
+
+  const used = new Set(); // чтобы одну клетку не красить несколько раз
+
+  shipIdxSet.forEach(idx => {
+    const { x, y } = coords(idx);
+
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx > 9 || ny < 0 || ny > 9) continue;
+
+        const nIdx = cellIndex(nx, ny);
+
+        // не закрашиваем сами клетки корабля
+        if (shipIdxSet.has(nIdx)) continue;
+        if (used.has(nIdx)) continue;
+        used.add(nIdx);
+
+        const cell = gridEl.children[nIdx];
+        if (!cell) continue;
+
+        // не трогаем уже простреленные клетки
+        if (
+          cell.classList.contains('hit') ||
+          cell.classList.contains('sunk') ||
+          cell.classList.contains('miss')
+        ) {
+          continue;
+        }
+
+        cell.classList.add('dot'); // класс у тебя уже в CSS есть
+      }
+    }
+  });
+}
+
 /* ====== поля ====== */
 function buildFields(){
   enemyField.innerHTML='';
@@ -619,32 +666,59 @@ function initSocket(){
   );
 });
 
-  socket.on('shot_result',d=>{
-    if(!d) return;
-    const idx=cellIndex(d.x,d.y);
+  socket.on('shot_result', d => {
+    if (!d) return;
+    const idx = cellIndex(d.x, d.y);
 
-    if(String(d.shooter)===String(PLAYER_ID)){
-      const cell=enemyField.children[idx];
-      if(cell){
+    if (String(d.shooter) === String(PLAYER_ID)) {
+      // МЫ стреляем по enemyField
+      const cell = enemyField.children[idx];
+      if (cell) {
         cell.classList.remove('pending');
-        if(d.result==='miss'){ cell.classList.add('miss'); cell.textContent='•'; }
-        else if(d.result==='hit'){ cell.classList.add('hit'); cell.textContent='×'; }
-        else if(d.result==='sunk'){ cell.classList.add('sunk'); cell.textContent='×'; }
+        if (d.result === 'miss') {
+          cell.classList.add('miss');
+          cell.textContent = '•';
+        } else if (d.result === 'hit') {
+          cell.classList.add('hit');
+          cell.textContent = '×';
+        } else if (d.result === 'sunk') {
+          cell.classList.add('sunk');
+          cell.textContent = '×';
+        }
       }
+
+      // если утопили корабль — ставим точки вокруг него
+      if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+        markDotsAroundShip(enemyField, d.sunkShip.cells);
+      }
+
     } else {
-      const cell=myField.children[idx];
-      if(cell){
-        if(d.result==='miss'){ cell.classList.add('miss'); cell.textContent='•'; }
-        else if(d.result==='hit'){ cell.classList.add('hit'); cell.textContent='×'; }
-        else if(d.result==='sunk'){ cell.classList.add('sunk'); cell.textContent='×'; }
+      // по НАС стреляют (myField)
+      const cell = myField.children[idx];
+      if (cell) {
+        if (d.result === 'miss') {
+          cell.classList.add('miss');
+          cell.textContent = '•';
+        } else if (d.result === 'hit') {
+          cell.classList.add('hit');
+          cell.textContent = '×';
+        } else if (d.result === 'sunk') {
+          cell.classList.add('sunk');
+          cell.textContent = '×';
+        }
+      }
+
+      // утопили наш корабль — тоже точки вокруг
+      if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+        markDotsAroundShip(myField, d.sunkShip.cells);
       }
     }
 
     currentTurn = d.newTurn;
-    turnLabel.innerText = d.finished ? '—' : String(currentTurn||'—');
-    updateStatus(`Результат: ${d.result} (${d.x},${d.y})`);
+    turnLabel.innerText = d.finished ? '—' : String(currentTurn || '—');
+    updateStatus(Результат: ${d.result} (${d.x},${d.y}));
 
-    if(d.finished){
+    if (d.finished) {
       matchFinished = true;
       readyBtn.innerText  = 'Реванш';
       resignBtn.innerText = 'Выйти';

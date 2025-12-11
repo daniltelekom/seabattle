@@ -728,7 +728,6 @@ function updateSidePanelState() {
   if (ratingRow) ratingRow.style.display = hasMatch ? 'none' : '';
 }
 
-}
 
 /* ====== helpers ====== */
 function logDbg(msg){
@@ -761,30 +760,7 @@ function overlapsOrAdjacent(cells){
   }
   return null;
 }
-  function updateSidePanelState() {
-  const sideControls = document.getElementById('sideControls');
-  const modeRow      = document.getElementById('infoModeRow');
-  const turnRow      = document.getElementById('infoTurnRow');
-  const ratingRow    = document.getElementById('infoRatingRow');
 
-  const hasMatch = !!currentMatchId;  // есть какой-то матч (игра/расстановка)
-
-  if (sideControls) {
-    // во время матча управление скрываем
-    sideControls.style.display = hasMatch ? 'none' : 'flex';
-    if (!hasMatch) {
-      sideControls.style.flexDirection = 'column';
-      sideControls.style.gap = '10px';
-    }
-  }
-
-   
-
-  // оставляем только строку Match:, всё остальное прячем
-  if (modeRow)   modeRow.style.display   = hasMatch ? 'none' : '';
-  if (turnRow)   turnRow.style.display   = hasMatch ? 'none' : '';
-  if (ratingRow) ratingRow.style.display = hasMatch ? 'none' : '';
-}
   
 function getSkinById(id){ return SKINS.find(s=>s.id===id) || SKINS[0]; }
 
@@ -1063,8 +1039,8 @@ function showEndModal(winnerId) {
     baseText = 'Матч завершён.';
   }
 
-  const rank = getRankName(playerRating);
-  const stats = `\nРейтинг: ${playerRating} (${rank})\nПобеды: ${totalWins}  Поражения: ${totalLosses}`;
+  const rank = rankByRating(myRating);
+  const stats = \nРейтинг: ${myRating} (${rank});
   endModalText.textContent = baseText + stats;
   endModal.style.display = 'flex';
 }
@@ -1285,25 +1261,15 @@ socket.on('shot_result', d => {
   }
 });
 
-  socket.on('match_finished', d => {
+socket.on('match_finished', d => {
   matchFinished = true;
 
-  // обновляем локальный рейтинг
   if (d && d.winner) {
-    gamesPlayed++;
-
     if (String(d.winner) === String(PLAYER_ID)) {
-      // победа
-      myRating += 20;
-      updateStatus('Матч завершён. Ты выиграл! +20 MMR');
+      updateStatus('Матч завершён. Ты выиграл!');
     } else {
-      // поражение
-      myRating = Math.max(0, myRating - 15);
-      updateStatus('Матч завершён. Ты проиграл. -15 MMR');
+      updateStatus('Матч завершён. Ты проиграл.');
     }
-
-    saveRating();
-    updateRanksUI();
   } else {
     updateStatus('Матч завершён.');
   }

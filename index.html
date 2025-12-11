@@ -228,6 +228,41 @@
       color:#e65100;
     }
 
+    .turn-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-top:6px;
+  margin-bottom:4px;
+}
+
+.player-info{
+  min-width:80px;
+  text-align:center;
+  font-size:11px;
+}
+
+.player-info .rank-title{
+  font-weight:600;
+}
+
+.player-info .rank-mmr{
+  font-size:11px;
+  color:#455a64;
+}
+
+/* Верхняя мини-плашка с твоим званием */
+#playerRankPanel{
+  margin-top:4px;
+  margin-bottom:4px;
+  font-size:13px;
+  padding:6px 10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
     /* ГЛАВНОЕ МЕНЮ (оверлей по центру) */
     #mainMenu{
       position:fixed;
@@ -335,25 +370,51 @@
     <div class="small">PlayerID: <span id="playerIdLabel">—</span></div>
   </div>
 
+  <!-- Плашка со званием/рейтингом (для тебя) -->
+  <div class="panel" id="playerRankPanel">
+    <div>
+      <span id="topRank">Новобранец</span>
+      <span style="opacity:.7;">·</span>
+      <span id="topRating">1000</span> MMR
+    </div>
+    <div class="small" id="topGamesInfo">
+      Локальный рейтинг
+    </div>
+  </div>
+  
   <!-- Основной лейаут -->
   <div class="layout">
     <!-- Лево: поля -->
-    <div class="panel">
-      <div id="fieldArea" class="field-wrap" style="margin-top:4px">
-        <div>
-          <div class="enemy-title">Поле противника (клик — стрелять)</div>
-          <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
-        </div>
+    <div>
+  <div class="enemy-title">Поле противника (клик — стрелять)</div>
+  <div id="enemyField" class="big-grid" aria-label="Поле противника"></div>
+</div>
 
-        <div id="turnBanner" class="turn-banner">
-          Нет активного матча
-        </div>
+<!-- Новый блок: слева ты, справа соперник, в центре чей ход -->
+<div class="turn-row">
+  <div class="player-info">
+    <div id="myRankLabel" class="rank-title">Новобранец</div>
+    <div class="rank-mmr">
+      <span id="myRatingLabel">1000</span> MMR
+    </div>
+  </div>
 
-        <div style="margin-top:8px">
-          <div class="label-muted">Ваше поле</div>
-          <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
-        </div>
-      </div>
+  <div id="turnBanner" class="turn-banner">
+    Ждём начала матча...
+  </div>
+
+  <div class="player-info">
+    <div id="enemyRankLabel" class="rank-title">Соперник</div>
+    <div class="rank-mmr">
+      <span id="enemyRatingLabel">?</span>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:12px">
+  <div class="label-muted">Ваше поле</div>
+  <div id="myField" class="small-grid" aria-label="Ваше поле"></div>
+</div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
         <div class="ships-panel" id="shipsPanel"></div>
@@ -565,6 +626,16 @@ const endModalText   = document.getElementById('endModalText');
 const endRematchBtn  = document.getElementById('endRematchBtn');
 const endExitBtn     = document.getElementById('endExitBtn');
 
+  /* Звания / рейтинг в UI */
+const topRankEl        = document.getElementById('topRank');
+const topRatingEl      = document.getElementById('topRating');
+const topGamesInfoEl   = document.getElementById('topGamesInfo');
+
+const myRankLabel      = document.getElementById('myRankLabel');
+const myRatingLabel    = document.getElementById('myRatingLabel');
+const enemyRankLabel   = document.getElementById('enemyRankLabel');
+const enemyRatingLabel = document.getElementById('enemyRatingLabel');
+
 /* ====== Состояние ====== */
 let socket         = null;
 let currentMatchId = null;
@@ -611,6 +682,51 @@ let eraseMode    = false;
 /* Скины локально */
 let ownedSkins   = JSON.parse(localStorage.getItem('owned_skins') || '["blue"]');
 let equippedSkin = localStorage.getItem('equipped_skin') || 'blue';
+
+  /* ====== Рейтинг / звания (локально) ====== */
+// твой рейтинг и количество сыгранных матчей
+let myRating    = parseInt(localStorage.getItem('sea_rating') || '1000', 10);
+let gamesPlayed = parseInt(localStorage.getItem('sea_games')  || '0',    10);
+
+// временно: рейтинг соперника неизвестен
+let enemyRating = null;
+
+// сохраняем в localStorage
+function saveRating() {
+  localStorage.setItem('sea_rating', String(myRating));
+  localStorage.setItem('sea_games', String(gamesPlayed));
+}
+
+// маппинг рейтинга -> звание
+function titleForRating(r) {
+  if (r >= 1500) return 'Адмирал';
+  if (r >= 1350) return 'Капитан';
+  if (r >= 1200) return 'Лейтенант';
+  if (r >= 1100) return 'Матрос';
+  return 'Новобранец';
+}
+
+// обновляем весь UI, связанный с рейтингом
+function updateRanksUI() {
+  const rankName = titleForRating(myRating);
+
+  if (topRankEl)    topRankEl.textContent    = rankName;
+  if (topRatingEl)  topRatingEl.textContent  = myRating;
+
+  if (myRankLabel)  myRankLabel.textContent  = rankName;
+  if (myRatingLabel) myRatingLabel.textContent = myRating;
+
+  if (topGamesInfoEl) {
+    topGamesInfoEl.textContent =
+      gamesPlayed > 0
+        ? `Матчей сыграно: ${gamesPlayed}`
+        : 'Локальный рейтинг';
+  }
+
+  // справа пока рейтинга соперника нет — просто отображаем ?
+  if (enemyRankLabel)   enemyRankLabel.textContent   = 'Соперник';
+  if (enemyRatingLabel) enemyRatingLabel.textContent = enemyRating != null ? enemyRating : '?';
+}
 
 /* ====== helpers ====== */
 function logDbg(msg){
@@ -1140,11 +1256,31 @@ socket.on('shot_result', d => {
 });
 
   socket.on('match_finished', d => {
-    matchFinished = true;
-    updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
-    showEndModal(d.winner);
-    updateTurnBanner();
-  });
+  matchFinished = true;
+
+  // обновляем локальный рейтинг
+  if (d && d.winner) {
+    gamesPlayed++;
+
+    if (String(d.winner) === String(PLAYER_ID)) {
+      // победа
+      myRating += 20;
+      updateStatus('Матч завершён. Ты выиграл! +20 MMR');
+    } else {
+      // поражение
+      myRating = Math.max(0, myRating - 15);
+      updateStatus('Матч завершён. Ты проиграл. -15 MMR');
+    }
+
+    saveRating();
+    updateRanksUI();
+  } else {
+    updateStatus('Матч завершён.');
+  }
+
+  showEndModal(d && d.winner);
+  updateTurnBanner();
+});
 
   socket.on('rematch_started', d => {
     if (!d) return;
@@ -1371,7 +1507,7 @@ function initUI(){
   renderShipsPanel();
   renderAll();
   modeLabel.innerText='railway';
-  updateRatingUI();
+  updateRanksUI();
   updateStatus('Готово — выбери режим в главном меню');
   dbg.style.display='none';
   updateTurnBanner();

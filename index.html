@@ -1042,8 +1042,9 @@ socket.on('shot_result', d => {
   if (!d) return;
   const idx = cellIndex(d.x, d.y);
 
+  // --- рисуем выстрел ---
   if (String(d.shooter) === String(PLAYER_ID)) {
-    // МЫ стреляем по enemyField
+    // мы стреляем по enemyField
     const cell = enemyField.children[idx];
     if (cell) {
       cell.classList.remove('pending');
@@ -1059,13 +1060,13 @@ socket.on('shot_result', d => {
       }
     }
 
-    // если утопили корабль — ставим точки вокруг него
+    // если утопили корабль — точки вокруг
     if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
       markDotsAroundShip(enemyField, d.sunkShip.cells);
     }
 
   } else {
-    // по НАС стреляют (myField)
+    // по нам стреляют (myField)
     const cell = myField.children[idx];
     if (cell) {
       if (d.result === 'miss') {
@@ -1080,45 +1081,32 @@ socket.on('shot_result', d => {
       }
     }
 
-    // утопили наш корабль — тоже точки вокруг
     if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
       markDotsAroundShip(myField, d.sunkShip.cells);
     }
   }
 
-  // чей ход теперь
-  currentTurn = d.newTurn;
-  const myTurnNow = !d.finished && String(currentTurn) === String(PLAYER_ID);
-  turnLabel.innerText = d.finished ? '—' : String(currentTurn || '—');
+  // --- обновляем ход и баннер ---
+  currentTurn   = d.newTurn;
+  matchFinished = !!d.finished;
 
-  const turnText = d.finished
+  const myTurnNow = !matchFinished && String(currentTurn) === String(PLAYER_ID);
+  turnLabel.innerText = matchFinished ? '—' : String(currentTurn || '—');
+
+  updateTurnBanner();          // <- СЮДА ОЧЕНЬ ВАЖНО
+  if (typeof updateSidePanelState === 'function') {
+    updateSidePanelState();
+  }
+
+  const turnText = matchFinished
     ? ''
     : (myTurnNow ? ' Твой ход.' : ' Ход соперника.');
-  updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
+  updateStatus(Результат: ${d.result} (${d.x},${d.y}).${turnText});
 
-  // ==== НОВОЕ: обновляем рейтинг при завершении матча ====
-  if (d.finished) {
-    matchFinished = true;
-
-    const iWon = d.winner && String(d.winner) === String(PLAYER_ID);
-    if (iWon) {
-      totalWins++;
-      playerRating += 25;         // +25 за победу
-    } else {
-      totalLosses++;
-      playerRating = Math.max(0, playerRating - 15); // -15 за проигрыш, не уходим в минус
-    }
-
-    // сохраняем в localStorage
-    localStorage.setItem('rating', String(playerRating));
-    localStorage.setItem('wins',   String(totalWins));
-    localStorage.setItem('losses', String(totalLosses));
-
-    // обновляем UI
-    updateRatingUI();
-
+  if (matchFinished) {
     updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
-    showEndModal(d.winner);   // теперь модалка уже видит новый рейтинг
+    showEndModal(d.winner);
+    updateTurnBanner();
   }
 });
 

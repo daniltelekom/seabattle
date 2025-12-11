@@ -680,7 +680,7 @@ function updateRanksUI() {
     topGamesInfoEl.textContent = 'Рейтинг хранится на сервере';
   }
 
-  // слева от баннера
+  // слева от баннера (ты)
   if (myRankLabel)   myRankLabel.textContent   = myRankTitle;
   if (myRatingLabel) myRatingLabel.textContent = myRating + ' MMR';
 
@@ -689,6 +689,17 @@ function updateRanksUI() {
   if (enemyRatingLabel) {
     enemyRatingLabel.textContent =
       enemyRating != null ? (enemyRating + ' MMR') : '?';
+  }
+
+  // правая панель: "Rating: ..."
+  if (typeof ratingLabel !== 'undefined' && ratingLabel) {
+    ratingLabel.textContent = myRating;
+  }
+
+  // подпись в главном меню снизу
+  const menuInfo = document.querySelector('#mainMenu .small');
+  if (menuInfo) {
+    menuInfo.textContent =` Совместимо с Telegram MiniApp • rating: ${myRating}`;
   }
 }
 
@@ -1151,6 +1162,7 @@ socket.on('rating_info', d => {
       typeof d.rating === 'number') {
     myRating = d.rating;
     localStorage.setItem('mmr_value', String(myRating));
+    logDbg('rating_info: ' + myRating);
     updateRanksUI();
   }
 });

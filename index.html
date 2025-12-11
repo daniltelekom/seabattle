@@ -704,17 +704,28 @@ function updateRanksUI() {
 }
 
 // вытаскиваем рейтинг соперника из payload матча
-function applyEnemyRatingFromMatchPayload(d) {
+function applyRatingsFromMatchPayload(d) {
   if (!d || !Array.isArray(d.players)) return;
 
   const me    = String(PLAYER_ID);
   const oppId = d.players.find(p => String(p) !== me);
-  if (!oppId) return;
 
-  if (d.ratings && typeof d.ratings[oppId] === 'number') {
-    enemyRating = d.ratings[oppId];
-    updateRanksUI();
+  if (!d.ratings) {
+    return;
   }
+
+  // мой рейтинг из payload матча
+  if (typeof d.ratings[me] === 'number') {
+    myRating = d.ratings[me];
+    localStorage.setItem('mmr_value', String(myRating));
+  }
+
+  // рейтинг соперника
+  if (oppId && typeof d.ratings[oppId] === 'number') {
+    enemyRating = d.ratings[oppId];
+  }
+
+  updateRanksUI();
 }
 
 // панель справа: прячем/показываем управление в зависимости от матча
@@ -1085,21 +1096,28 @@ endExitBtn.addEventListener('click', () => {
 
 /* ====== Socket.IO ====== */
 function initSocket(){
-  if(socket) return;
-  if(!SOCKET_URL || !SOCKET_URL.startsWith('http')){
+  if (socket) return;
+  if (!SOCKET_URL || !SOCKET_URL.startsWith('http')) {
     updateStatus('Неправильный SOCKET_URL');
     return;
   }
-  socket = io(SOCKET_URL,{transports:['websocket']});
 
-  socket.on('connect',()=>{
-    logDbg('socket connected: '+socket.id);
-    socket.emit('identify',{playerId:PLAYER_ID,username:PLAYER_NAME});
+  socket = io(SOCKET_URL, { transports:['websocket'] });
+
+  socket.on('connect', () => {
+    logDbg('socket connected: ' + socket.id);
+    socket.emit('identify', { playerId: PLAYER_ID, username: PLAYER_NAME });
   });
-  socket.on('connect_error',err=>{ logDbg('connect_error: '+(err && err.message?err.message:err)); });
-  socket.on('disconnect',reason=>{ logDbg('disconnect: '+reason); });
 
-  socket.on('identified',()=>{});
+  socket.on('connect_error', err => {
+    logDbg('connect_error: ' + (err && err.message ? err.message : err));
+  });
+
+  socket.on('disconnect', reason => {
+    logDbg('disconnect: ' + reason);
+  });
+
+  socket.on('identified', () => {});
 
   socket.on('match_created',d=>{
     currentMatchId=d.matchId;
@@ -1115,7 +1133,7 @@ function initSocket(){
     currentMatchId=d.matchId;
     matchLabel.innerText=currentMatchId;
     modeLabel.innerText='railway';
-    applyEnemyRatingFromMatchPayload(d);
+    applyRatingsFromMatchPayload(d);
     updateStatus('Найден матч: '+d.matchId);
     updateStatus('В матче: '+currentMatchId);
     searchOverlay.style.display='none';
@@ -1129,7 +1147,7 @@ function initSocket(){
     modeLabel.innerText='railway';
     currentTurn=d.turn;
     turnLabel.innerText=String(currentTurn||'—');
-    applyEnemyRatingFromMatchPayload(d);
+    applyRatingsFromMatchPayload(d);
     updateStatus('Найден матч: '+d.matchId);
     searchOverlay.style.display='none';
     updateTurnBanner();
@@ -1156,27 +1174,21 @@ function initSocket(){
 socket.on('identified',()=>{});
 
  // пришёл начальный рейтинг с сервера
-socket.on('rating_info', d => {
-  if (!d) return;
-  if (String(d.playerId) === String(PLAYER_ID) &&
-      typeof d.rating === 'number') {
-    myRating = d.rating;
-    localStorage.setItem('mmr_value', String(myRating));
-    logDbg('rating_info: ' + myRating);
-    updateRanksUI();
-  }
-});
-
-// обновление рейтинга после матча
-socket.on('rating_update', d => {
-  if (!d) return;
-  if (String(d.playerId) === String(PLAYER_ID) &&
-      typeof d.rating === 'number') {
-    myRating = d.rating;
-    localStorage.setItem('mmr_value', String(myRating));
-    updateRanksUI();
-  }
-});
+ socket.on('rating_update', d => {
+    if (!d) return;
+    if (String(d.playerId) === String(PLAYER_ID) &&
+        typeof d.rating === 'number') {
+      myRating = d.rating;
+      localStorage.setItem('mmr_value', String(myRating));
+      updateRanksUI();
+      // если модалка уже открыта — обновим текст
+      if (endModal.style.display === 'flex') {
+        const rank = rankByRating(myRating);
+        const baseText = endModalText.textContent.split('\n')[0]; // "Ты выиграл! 🎉" и т.п.
+        endModalText.textContent = ${baseText}\`nРейтинг: ${myRating} (${rank})`;
+      }
+    }
+  });
     
     updateStatus(
       String(currentTurn) === String(PLAYER_ID)

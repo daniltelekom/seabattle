@@ -631,33 +631,6 @@ let currentMatchId = null;
 let currentTurn    = null;
 let matchFinished  = false;
 
-  // Рейтинг и статистика (локально на устройстве)
-let playerRating = parseInt(localStorage.getItem('rating') || '1000', 10);
-let totalWins    = parseInt(localStorage.getItem('wins')   || '0',    10);
-let totalLosses  = parseInt(localStorage.getItem('losses') || '0',    10);
-
-// Звания по рейтингу
-function getRankName(r) {
-  if (r < 900)  return 'Новобранец';
-  if (r < 1000) return 'Матрос';
-  if (r < 1100) return 'Капрал';
-  if (r < 1200) return 'Старшина';
-  if (r < 1300) return 'Лейтенант';
-  if (r < 1400) return 'Капитан';
-  if (r < 1500) return 'Коммодор';
-  return 'Адмирал';
-}
-
-// Обновляем надпись в правой панели
-function updateRatingUI() {
-  if (!ratingLabel) return;
-  const rank = getRankName(playerRating);
-  ratingLabel.textContent = `${playerRating} (${rank})`;
-}
-
-// Сразу один раз при загрузке
-updateRatingUI();
-
 /* Расстановка */
 const SHIP_SIZES = [4,3,3,2,2,2,1,1,1,1];
 function group(arr){ const out={}; arr.forEach(s=>out[s]=(out[s]||0)+1); return out; }
@@ -672,49 +645,17 @@ let eraseMode    = false;
 let ownedSkins   = JSON.parse(localStorage.getItem('owned_skins') || '["blue"]');
 let equippedSkin = localStorage.getItem('equipped_skin') || 'blue';
 
-  /* ====== Рейтинг / звания (локально) ====== */
-// РЕЙТИНГИ
-let myRating = 1000;      // придёт с сервера через rating_info
-let enemyRating = null;   // узнаем, когда найдём матч
+  /* ====== Рейтинг и звания (серверный MMR) ====== */
 
-let myRankTitle = 'Новобранец';
+// Текущее значение рейтинга, придёт с сервера через rating_info
+let myRating    = 1000;
+let enemyRating = null;
+
+let myRankTitle    = 'Новобранец';
 let enemyRankTitle = 'Соперник';
 
-// получаем дом-элементы панели (у тебя они уже есть в HTML)
-const myRankLabel      = document.getElementById('myRankLabel');
-const myRatingLabel    = document.getElementById('myRatingLabel');
-const enemyRankLabel   = document.getElementById('enemyRankLabel');
-const enemyRatingLabel = document.getElementById('enemyRatingLabel');
-
-// простая функция для звания по MMR
+// rating -> звание
 function rankByRating(r) {
-  if (r >= 1400) return 'Адмирал';
-  if (r >= 1200) return 'Капитан';
-  if (r >= 1000) return 'Новобранец';
-  return 'Рекрут';
-}
-
-function recalcRanks() {
-  myRankTitle = rankByRating(myRating);
-  enemyRankTitle = enemyRating != null
-    ? rankByRating(enemyRating)
-    : 'Соперник';
-}
-
-// обновляем надписи слева/справа от баннера хода
-function updateSidePanelState() {
-  if (myRankLabel)   myRankLabel.textContent = myRankTitle;
-  if (myRatingLabel) myRatingLabel.textContent = myRating + ' MMR';
-
-  if (enemyRankLabel)   enemyRankLabel.textContent = enemyRankTitle;
-  if (enemyRatingLabel) {
-    enemyRatingLabel.textContent =
-      enemyRating != null ? (enemyRating + ' MMR') : '?';
-  }
-}
-
-// маппинг рейтинга -> звание
-function titleForRating(r) {
   if (r >= 1500) return 'Адмирал';
   if (r >= 1350) return 'Капитан';
   if (r >= 1200) return 'Лейтенант';
@@ -722,26 +663,71 @@ function titleForRating(r) {
   return 'Новобранец';
 }
 
-// обновляем весь UI, связанный с рейтингом
+// обновляем названия званий по текущим рейтингам
+function recalcRanks() {
+  myRankTitle    = rankByRating(myRating);
+  enemyRankTitle = (enemyRating != null) ? rankByRating(enemyRating) : 'Соперник';
+}
+
+// обновляем все надписи, связанные с рейтингом
 function updateRanksUI() {
-  const rankName = titleForRating(myRating);
+  recalcRanks();
 
-  if (topRankEl)    topRankEl.textContent    = rankName;
-  if (topRatingEl)  topRatingEl.textContent  = myRating;
-
-  if (myRankLabel)  myRankLabel.textContent  = rankName;
-  if (myRatingLabel) myRatingLabel.textContent = myRating;
-
+  // верхняя плашка
+  if (topRankEl)   topRankEl.textContent   = myRankTitle;
+  if (topRatingEl) topRatingEl.textContent = myRating;
   if (topGamesInfoEl) {
-    topGamesInfoEl.textContent =
-      gamesPlayed > 0
-        ? `Матчей сыграно: ${gamesPlayed}`
-        : 'Локальный рейтинг';
+    topGamesInfoEl.textContent = 'Рейтинг хранится на сервере';
   }
 
-  // справа пока рейтинга соперника нет — просто отображаем ?
-  if (enemyRankLabel)   enemyRankLabel.textContent   = 'Соперник';
-  if (enemyRatingLabel) enemyRatingLabel.textContent = enemyRating != null ? enemyRating : '?';
+  // слева от баннера
+  if (myRankLabel)   myRankLabel.textContent   = myRankTitle;
+  if (myRatingLabel) myRatingLabel.textContent = myRating + ' MMR';
+
+  // справа (соперник)
+  if (enemyRankLabel)   enemyRankLabel.textContent = enemyRankTitle;
+  if (enemyRatingLabel) {
+    enemyRatingLabel.textContent =
+      enemyRating != null ? (enemyRating + ' MMR') : '?';
+  }
+}
+
+// вытаскиваем рейтинг соперника из payload матча
+function applyEnemyRatingFromMatchPayload(d) {
+  if (!d || !Array.isArray(d.players)) return;
+
+  const me    = String(PLAYER_ID);
+  const oppId = d.players.find(p => String(p) !== me);
+  if (!oppId) return;
+
+  if (d.ratings && typeof d.ratings[oppId] === 'number') {
+    enemyRating = d.ratings[oppId];
+    updateRanksUI();
+  }
+}
+
+// панель справа: прячем/показываем управление в зависимости от матча
+function updateSidePanelState() {
+  const sideControls = document.getElementById('sideControls');
+  const modeRow      = document.getElementById('infoModeRow');
+  const turnRow      = document.getElementById('infoTurnRow');
+  const ratingRow    = document.getElementById('infoRatingRow');
+
+  const hasMatch = !!currentMatchId;
+
+  if (sideControls) {
+    sideControls.style.display = hasMatch ? 'none' : 'flex';
+    if (!hasMatch) {
+      sideControls.style.flexDirection = 'column';
+      sideControls.style.gap = '10px';
+    }
+  }
+
+  if (modeRow)   modeRow.style.display   = hasMatch ? 'none' : '';
+  if (turnRow)   turnRow.style.display   = hasMatch ? 'none' : '';
+  if (ratingRow) ratingRow.style.display = hasMatch ? 'none' : '';
+}
+
 }
 
 /* ====== helpers ====== */
@@ -792,19 +778,7 @@ function overlapsOrAdjacent(cells){
     }
   }
 
-    function applyEnemyRatingFromMatchPayload(d) {
-  if (!d || !Array.isArray(d.players)) return;
-
-  const me = String(PLAYER_ID);
-  const oppId = d.players.find(p => String(p) !== me);
-  if (!oppId) return;
-
-  if (d.ratings && typeof d.ratings[oppId] === 'number') {
-    enemyRating = d.ratings[oppId];
-    recalcRanks();
-    updateSidePanelState();
-  }
-}
+   
 
   // оставляем только строку Match:, всё остальное прячем
   if (modeRow)   modeRow.style.display   = hasMatch ? 'none' : '';
@@ -1154,6 +1128,7 @@ function initSocket(){
     currentMatchId=d.matchId;
     matchLabel.innerText=currentMatchId;
     modeLabel.innerText='railway';
+    applyEnemyRatingFromMatchPayload(d);
     updateStatus('Найден матч: '+d.matchId);
     updateStatus('В матче: '+currentMatchId);
     searchOverlay.style.display='none';
@@ -1190,24 +1165,29 @@ function initSocket(){
       c.classList.remove('miss','hit','pending','sunk','sunk-preview','sunk-reveal','dot');
     });
 
-    socket.on('rating_info', (d) => {
-  if (!d) return;
-  if (String(d.playerId) === String(PLAYER_ID) && typeof d.rating === 'number') {
-    myRating = d.rating;
-    recalcRanks();
-    updateSidePanelState();
-  }
-});
 
-socket.on('rating_update', (d) => {
-  if (!d) return;
-  if (String(d.playerId) === String(PLAYER_ID) && typeof d.rating === 'number') {
-    myRating = d.rating;
-    recalcRanks();
-    updateSidePanelState();
-  }
-});
+socket.on('identified',()=>{});
 
+  // пришёл начальный рейтинг с сервера
+  socket.on('rating_info', d => {
+    if (!d) return;
+    if (String(d.playerId) === String(PLAYER_ID) &&
+        typeof d.rating === 'number') {
+      myRating = d.rating;
+      updateRanksUI();
+    }
+  });
+
+  // обновление рейтинга после матча
+  socket.on('rating_update', d => {
+    if (!d) return;
+    if (String(d.playerId) === String(PLAYER_ID) &&
+        typeof d.rating === 'number') {
+      myRating = d.rating;
+      updateRanksUI();
+    }
+  });
+    
     updateStatus(
       String(currentTurn) === String(PLAYER_ID)
         ? 'Матч начался — твой ход, стреляй по полю врага'

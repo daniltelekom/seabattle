@@ -673,17 +673,44 @@ let ownedSkins   = JSON.parse(localStorage.getItem('owned_skins') || '["blue"]')
 let equippedSkin = localStorage.getItem('equipped_skin') || 'blue';
 
   /* ====== Рейтинг / звания (локально) ====== */
-// твой рейтинг и количество сыгранных матчей
-let myRating    = parseInt(localStorage.getItem('sea_rating') || '1000', 10);
-let gamesPlayed = parseInt(localStorage.getItem('sea_games')  || '0',    10);
+// РЕЙТИНГИ
+let myRating = 1000;      // придёт с сервера через rating_info
+let enemyRating = null;   // узнаем, когда найдём матч
 
-// временно: рейтинг соперника неизвестен
-let enemyRating = null;
+let myRankTitle = 'Новобранец';
+let enemyRankTitle = 'Соперник';
 
-// сохраняем в localStorage
-function saveRating() {
-  localStorage.setItem('sea_rating', String(myRating));
-  localStorage.setItem('sea_games', String(gamesPlayed));
+// получаем дом-элементы панели (у тебя они уже есть в HTML)
+const myRankLabel      = document.getElementById('myRankLabel');
+const myRatingLabel    = document.getElementById('myRatingLabel');
+const enemyRankLabel   = document.getElementById('enemyRankLabel');
+const enemyRatingLabel = document.getElementById('enemyRatingLabel');
+
+// простая функция для звания по MMR
+function rankByRating(r) {
+  if (r >= 1400) return 'Адмирал';
+  if (r >= 1200) return 'Капитан';
+  if (r >= 1000) return 'Новобранец';
+  return 'Рекрут';
+}
+
+function recalcRanks() {
+  myRankTitle = rankByRating(myRating);
+  enemyRankTitle = enemyRating != null
+    ? rankByRating(enemyRating)
+    : 'Соперник';
+}
+
+// обновляем надписи слева/справа от баннера хода
+function updateSidePanelState() {
+  if (myRankLabel)   myRankLabel.textContent = myRankTitle;
+  if (myRatingLabel) myRatingLabel.textContent = myRating + ' MMR';
+
+  if (enemyRankLabel)   enemyRankLabel.textContent = enemyRankTitle;
+  if (enemyRatingLabel) {
+    enemyRatingLabel.textContent =
+      enemyRating != null ? (enemyRating + ' MMR') : '?';
+  }
 }
 
 // маппинг рейтинга -> звание
@@ -764,6 +791,20 @@ function overlapsOrAdjacent(cells){
       sideControls.style.gap = '10px';
     }
   }
+
+    function applyEnemyRatingFromMatchPayload(d) {
+  if (!d || !Array.isArray(d.players)) return;
+
+  const me = String(PLAYER_ID);
+  const oppId = d.players.find(p => String(p) !== me);
+  if (!oppId) return;
+
+  if (d.ratings && typeof d.ratings[oppId] === 'number') {
+    enemyRating = d.ratings[oppId];
+    recalcRanks();
+    updateSidePanelState();
+  }
+}
 
   // оставляем только строку Match:, всё остальное прячем
   if (modeRow)   modeRow.style.display   = hasMatch ? 'none' : '';
@@ -1113,6 +1154,7 @@ function initSocket(){
     currentMatchId=d.matchId;
     matchLabel.innerText=currentMatchId;
     modeLabel.innerText='railway';
+    updateStatus('Найден матч: '+d.matchId);
     updateStatus('В матче: '+currentMatchId);
     searchOverlay.style.display='none';
     updateTurnBanner();
@@ -1125,6 +1167,7 @@ function initSocket(){
     modeLabel.innerText='railway';
     currentTurn=d.turn;
     turnLabel.innerText=String(currentTurn||'—');
+    applyEnemyRatingFromMatchPayload(d);
     updateStatus('Найден матч: '+d.matchId);
     searchOverlay.style.display='none';
     updateTurnBanner();
@@ -1146,6 +1189,24 @@ function initSocket(){
     myField.querySelectorAll('.cell').forEach(c => {
       c.classList.remove('miss','hit','pending','sunk','sunk-preview','sunk-reveal','dot');
     });
+
+    socket.on('rating_info', (d) => {
+  if (!d) return;
+  if (String(d.playerId) === String(PLAYER_ID) && typeof d.rating === 'number') {
+    myRating = d.rating;
+    recalcRanks();
+    updateSidePanelState();
+  }
+});
+
+socket.on('rating_update', (d) => {
+  if (!d) return;
+  if (String(d.playerId) === String(PLAYER_ID) && typeof d.rating === 'number') {
+    myRating = d.rating;
+    recalcRanks();
+    updateSidePanelState();
+  }
+});
 
     updateStatus(
       String(currentTurn) === String(PLAYER_ID)

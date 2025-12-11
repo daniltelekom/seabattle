@@ -1130,7 +1130,7 @@ socket.on('shot_result', d => {
   const turnText = matchFinished
     ? ''
     : (myTurnNow ? ' Твой ход.' : ' Ход соперника.');
-  updateStatus(Результат: ${d.result} (${d.x},${d.y}).${turnText});
+  updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
 
   if (matchFinished) {
     updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));

@@ -116,6 +116,19 @@
       border-radius:50%;
       background:#90a4ae;
     }
+    .cell.explosion {
+  background: none !important;
+  position: relative;
+}
+
+.cell.explosion img.explosion-img {
+  position: absolute;
+  width: 90%;
+  height: 90%;
+  top: 5%;
+  left: 5%;
+  pointer-events: none;
+}
 
     .rotated{
       transform-origin:center center;
@@ -1052,11 +1065,27 @@ socket.on('shot_result', d => {
         cell.classList.add('miss');
         cell.textContent = '•';
       } else if (d.result === 'hit') {
-        cell.classList.add('hit');
-        cell.textContent = '×';
+  cell.classList.remove('hit', 'miss', 'sunk');
+  cell.innerHTML = '';
+  cell.classList.add('explosion');
+
+  const img = document.createElement('img');
+  img.src = 'assets/effects/explosion.png';   // ← твой PNG взрыва
+  img.className = 'explosion-img';
+  img.draggable = false;
+
+  cell.appendChild(img);
       } else if (d.result === 'sunk') {
-        cell.classList.add('sunk');
-        cell.textContent = '×';
+  cell.classList.remove('hit', 'miss');
+  cell.innerHTML = '';
+  cell.classList.add('explosion');
+
+  const img = document.createElement('img');
+  img.src = 'assets/effects/explosion.png';
+  img.className = 'explosion-img';
+  img.draggable = false;
+
+  cell.appendChild(img);
       }
     }
 

@@ -1185,7 +1185,7 @@ socket.on('identified',()=>{});
       if (endModal.style.display === 'flex') {
         const rank = rankByRating(myRating);
         const baseText = endModalText.textContent.split('\n')[0]; // "Ты выиграл! 🎉" и т.п.
-        endModalText.textContent = ${baseText}\`nРейтинг: ${myRating} (${rank})`;
+        endModalText.textContent = `${baseText}\nРейтинг: ${myRating} (${rank})`;
       }
     }
   });

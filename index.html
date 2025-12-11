@@ -648,7 +648,7 @@ let equippedSkin = localStorage.getItem('equipped_skin') || 'blue';
   /* ====== Рейтинг и звания (серверный MMR) ====== */
 
 // Текущее значение рейтинга, придёт с сервера через rating_info
-let myRating    = 1000;
+let myRating    = Number(localStorage.getItem('mmr_value') || '1000') || 1000;
 let enemyRating = null;
 
 let myRankTitle    = 'Новобранец';
@@ -1144,25 +1144,27 @@ function initSocket(){
 
 socket.on('identified',()=>{});
 
-  // пришёл начальный рейтинг с сервера
-  socket.on('rating_info', d => {
-    if (!d) return;
-    if (String(d.playerId) === String(PLAYER_ID) &&
-        typeof d.rating === 'number') {
-      myRating = d.rating;
-      updateRanksUI();
-    }
-  });
+ // пришёл начальный рейтинг с сервера
+socket.on('rating_info', d => {
+  if (!d) return;
+  if (String(d.playerId) === String(PLAYER_ID) &&
+      typeof d.rating === 'number') {
+    myRating = d.rating;
+    localStorage.setItem('mmr_value', String(myRating));
+    updateRanksUI();
+  }
+});
 
-  // обновление рейтинга после матча
-  socket.on('rating_update', d => {
-    if (!d) return;
-    if (String(d.playerId) === String(PLAYER_ID) &&
-        typeof d.rating === 'number') {
-      myRating = d.rating;
-      updateRanksUI();
-    }
-  });
+// обновление рейтинга после матча
+socket.on('rating_update', d => {
+  if (!d) return;
+  if (String(d.playerId) === String(PLAYER_ID) &&
+      typeof d.rating === 'number') {
+    myRating = d.rating;
+    localStorage.setItem('mmr_value', String(myRating));
+    updateRanksUI();
+  }
+});
     
     updateStatus(
       String(currentTurn) === String(PLAYER_ID)

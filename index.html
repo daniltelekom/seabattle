@@ -1095,14 +1095,15 @@ endExitBtn.addEventListener('click', () => {
 });
 
 /* ====== Socket.IO ====== */
-function initSocket(){
+/* ====== Socket.IO ====== */
+function initSocket() {
   if (socket) return;
   if (!SOCKET_URL || !SOCKET_URL.startsWith('http')) {
     updateStatus('Неправильный SOCKET_URL');
     return;
   }
 
-  socket = io(SOCKET_URL, { transports:['websocket'] });
+  socket = io(SOCKET_URL, { transports: ['websocket'] });
 
   socket.on('connect', () => {
     logDbg('socket connected: ' + socket.id);
@@ -1119,190 +1120,182 @@ function initSocket(){
 
   socket.on('identified', () => {});
 
-  socket.on('match_created',d=>{
-    currentMatchId=d.matchId;
-    matchLabel.innerText=currentMatchId;
-    modeLabel.innerText='railway';
-    updateStatus('Матч создан: '+currentMatchId);
-    searchOverlay.style.display='none';
-    updateTurnBanner();
-    updateSidePanelState();  
-  });
-
-  socket.on('match_joined',d=>{
-    currentMatchId=d.matchId;
-    matchLabel.innerText=currentMatchId;
-    modeLabel.innerText='railway';
-    applyRatingsFromMatchPayload(d);
-    updateStatus('Найден матч: '+d.matchId);
-    updateStatus('В матче: '+currentMatchId);
-    searchOverlay.style.display='none';
-    updateTurnBanner();
-    updateSidePanelState();
-  });
-
-  socket.on('match_found',d=>{
-    currentMatchId=d.matchId;
-    matchLabel.innerText=d.matchId;
-    modeLabel.innerText='railway';
-    currentTurn=d.turn;
-    turnLabel.innerText=String(currentTurn||'—');
-    applyRatingsFromMatchPayload(d);
-    updateStatus('Найден матч: '+d.matchId);
-    searchOverlay.style.display='none';
-    updateTurnBanner();
-    updateSidePanelState();
-  });
-
-  socket.on('placement_update',()=>updateStatus('Противник отправил расстановку'));
-
-  socket.on('match_started', d => {
-    currentMatchId = d.matchId;
-    currentTurn   = d.turn;
-    matchLabel.innerText = currentMatchId;
-    turnLabel.innerText  = String(currentTurn || '—');
-
-    enemyField.querySelectorAll('.cell').forEach(c => {
-      c.className = 'cell';
-      c.innerHTML = '';
-    });
-    myField.querySelectorAll('.cell').forEach(c => {
-      c.classList.remove('miss','hit','pending','sunk','sunk-preview','sunk-reveal','dot');
-    });
-
-
-socket.on('identified',()=>{});
-
- // пришёл начальный рейтинг с сервера
- socket.on('rating_update', d => {
+  // обновление рейтинга после матча
+  socket.on('rating_update', d => {
     if (!d) return;
     if (String(d.playerId) === String(PLAYER_ID) &&
         typeof d.rating === 'number') {
       myRating = d.rating;
       localStorage.setItem('mmr_value', String(myRating));
       updateRanksUI();
+
       // если модалка уже открыта — обновим текст
       if (endModal.style.display === 'flex') {
         const rank = rankByRating(myRating);
-        const baseText = endModalText.textContent.split('\n')[0]; // "Ты выиграл! 🎉" и т.п.
+        const baseText = endModalText.textContent.split('\n')[0];
         endModalText.textContent = `${baseText}\nРейтинг: ${myRating} (${rank})`;
       }
     }
   });
-    
+
+  socket.on('match_created', d => {
+    currentMatchId = d.matchId;
+    matchLabel.innerText = currentMatchId;
+    modeLabel.innerText = 'railway';
+    updateStatus('Матч создан: ' + currentMatchId);
+    searchOverlay.style.display = 'none';
+    updateTurnBanner();
+    updateSidePanelState();
+  });
+
+  socket.on('match_joined', d => {
+    currentMatchId = d.matchId;
+    matchLabel.innerText = currentMatchId;
+    modeLabel.innerText = 'railway';
+    applyRatingsFromMatchPayload(d);
+    updateStatus('Найден матч: ' + d.matchId);
+    updateStatus('В матче: ' + currentMatchId);
+    searchOverlay.style.display = 'none';
+    updateTurnBanner();
+    updateSidePanelState();
+  });
+
+  socket.on('match_found', d => {
+    currentMatchId = d.matchId;
+    matchLabel.innerText = d.matchId;
+    modeLabel.innerText = 'railway';
+    currentTurn = d.turn;
+    turnLabel.innerText = String(currentTurn || '—');
+    applyRatingsFromMatchPayload(d);
+    updateStatus('Найден матч: ' + d.matchId);
+    searchOverlay.style.display = 'none';
+    updateTurnBanner();
+    updateSidePanelState();
+  });
+
+  socket.on('placement_update', () => updateStatus('Противник отправил расстановку'));
+
+  socket.on('match_started', d => {
+    currentMatchId = d.matchId;
+    currentTurn = d.turn;
+    matchLabel.innerText = currentMatchId;
+    turnLabel.innerText = String(currentTurn || '—');
+
+    enemyField.querySelectorAll('.cell').forEach(c => {
+      c.className = 'cell';
+      c.innerHTML = '';
+    });
+    myField.querySelectorAll('.cell').forEach(c => {
+      c.classList.remove('miss', 'hit', 'pending', 'sunk', 'sunk-preview', 'sunk-reveal', 'dot');
+    });
+
     updateStatus(
       String(currentTurn) === String(PLAYER_ID)
         ? 'Матч начался — твой ход, стреляй по полю врага'
         : 'Матч начался — ход соперника, жди'
     );
+    matchFinished = false;
     updateTurnBanner();
     updateSidePanelState();
   });
 
-socket.on('shot_result', d => {
-  if (!d) return;
-  const idx = cellIndex(d.x, d.y);
+  socket.on('shot_result', d => {
+    if (!d) return;
+    const idx = cellIndex(d.x, d.y);
 
-  // --- рисуем выстрел ---
-  if (String(d.shooter) === String(PLAYER_ID)) {
-    // мы стреляем по enemyField
-    const cell = enemyField.children[idx];
-    if (cell) {
-      cell.classList.remove('pending');
-      if (d.result === 'miss') {
-        cell.classList.add('miss');
-        cell.textContent = '•';
-      } else if (d.result === 'hit') {
-  cell.classList.remove('hit', 'miss', 'sunk');
-  cell.innerHTML = '';
-  cell.classList.add('explosion');
+    if (String(d.shooter) === String(PLAYER_ID)) {
+      // мы стреляем по enemyField
+      const cell = enemyField.children[idx];
+      if (cell) {
+        cell.classList.remove('pending');
+        if (d.result === 'miss') {
+          cell.classList.add('miss');
+          cell.textContent = '•';
+        } else if (d.result === 'hit') {
+          cell.classList.remove('hit', 'miss', 'sunk');
+          cell.innerHTML = '';
+          cell.classList.add('explosion');
 
-  const img = document.createElement('img');
-  img.src = 'assets/effects/explosion.png';   // ← твой PNG взрыва
-  img.className = 'explosion-img';
-  img.draggable = false;
+          const img = document.createElement('img');
+          img.src = 'assets/effects/explosion.png';
+          img.className = 'explosion-img';
+          img.draggable = false;
+          cell.appendChild(img);
+        } else if (d.result === 'sunk') {
+          cell.classList.remove('hit', 'miss');
+          cell.innerHTML = '';
+          cell.classList.add('explosion');
 
-  cell.appendChild(img);
-      } else if (d.result === 'sunk') {
-  cell.classList.remove('hit', 'miss');
-  cell.innerHTML = '';
-  cell.classList.add('explosion');
-
-  const img = document.createElement('img');
-  img.src = 'assets/effects/explosion.png';
-  img.className = 'explosion-img';
-  img.draggable = false;
-
-  cell.appendChild(img);
+          const img = document.createElement('img');
+          img.src = 'assets/effects/explosion.png';
+          img.className = 'explosion-img';
+          img.draggable = false;
+          cell.appendChild(img);
+        }
       }
-    }
 
-    // если утопили корабль — точки вокруг
-    if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
-      markDotsAroundShip(enemyField, d.sunkShip.cells);
-    }
-
-  } else {
-    // по нам стреляют (myField)
-    const cell = myField.children[idx];
-    if (cell) {
-      if (d.result === 'miss') {
-        cell.classList.add('miss');
-        cell.textContent = '•';
-      } else if (d.result === 'hit') {
-        cell.classList.add('hit');
-        cell.textContent = '×';
-      } else if (d.result === 'sunk') {
-        cell.classList.add('sunk');
-        cell.textContent = '×';
+      if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+        markDotsAroundShip(enemyField, d.sunkShip.cells);
       }
-    }
 
-    if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
-      markDotsAroundShip(myField, d.sunkShip.cells);
-    }
-  }
-
-  // --- обновляем ход и баннер ---
-  currentTurn   = d.newTurn;
-  matchFinished = !!d.finished;
-
-  const myTurnNow = !matchFinished && String(currentTurn) === String(PLAYER_ID);
-  turnLabel.innerText = matchFinished ? '—' : String(currentTurn || '—');
-
-  updateTurnBanner();          // <- СЮДА ОЧЕНЬ ВАЖНО
-  if (typeof updateSidePanelState === 'function') {
-    updateSidePanelState();
-  }
-
-  const turnText = matchFinished
-    ? ''
-    : (myTurnNow ? ' Твой ход.' : ' Ход соперника.');
-  updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
-
-  if (matchFinished) {
-    updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
-    showEndModal(d.winner);
-    updateTurnBanner();
-  }
-});
-
-socket.on('match_finished', d => {
-  matchFinished = true;
-
-  if (d && d.winner) {
-    if (String(d.winner) === String(PLAYER_ID)) {
-      updateStatus('Матч завершён. Ты выиграл!');
     } else {
-      updateStatus('Матч завершён. Ты проиграл.');
-    }
-  } else {
-    updateStatus('Матч завершён.');
-  }
+      // по нам стреляют (myField)
+      const cell = myField.children[idx];
+      if (cell) {
+        if (d.result === 'miss') {
+          cell.classList.add('miss');
+          cell.textContent = '•';
+        } else if (d.result === 'hit') {
+          cell.classList.add('hit');
+          cell.textContent = '×';
+        } else if (d.result === 'sunk') {
+          cell.classList.add('sunk');
+          cell.textContent = '×';
+        }
+      }
 
-  showEndModal(d && d.winner);
-  updateTurnBanner();
-});
+      if (d.sunkShip && Array.isArray(d.sunkShip.cells)) {
+        markDotsAroundShip(myField, d.sunkShip.cells);
+      }
+    }
+
+    currentTurn   = d.newTurn;
+    matchFinished = !!d.finished;
+
+    const myTurnNow = !matchFinished && String(currentTurn) === String(PLAYER_ID);
+    turnLabel.innerText = matchFinished ? '—' : String(currentTurn || '—');
+
+    updateTurnBanner();
+    updateSidePanelState();
+
+    const turnText = matchFinished
+      ? ''
+      : (myTurnNow ? ' Твой ход.' : ' Ход соперника.');
+    updateStatus(`Результат: ${d.result} (${d.x},${d.y}).${turnText}`);
+
+    if (matchFinished) {
+      updateStatus('Матч завершён. Победитель: ' + (d.winner || '—'));
+      showEndModal(d.winner);
+      updateTurnBanner();
+    }
+  });
+
+  socket.on('match_finished', d => {
+    matchFinished = true;
+
+    if (d && d.winner) {
+      if (String(d.winner) === String(PLAYER_ID)) {
+        updateStatus('Матч завершён. Ты выиграл!');
+      } else {
+        updateStatus('Матч завершён. Ты проиграл.');
+      }
+    } else {
+      updateStatus('Матч завершён.');
+    }
+
+    showEndModal(d && d.winner);
+    updateTurnBanner();
+  });
 
   socket.on('rematch_started', d => {
     if (!d) return;
@@ -1328,40 +1321,40 @@ socket.on('match_finished', d => {
     updateSidePanelState();
   });
 
-  socket.on('rematch_pending',()=>{
+  socket.on('rematch_pending', () => {
     updateStatus('Ждём решение соперника по реваншу...');
   });
 
-  socket.on('rematch_vote',()=>{
+  socket.on('rematch_vote', () => {
     updateStatus('Игрок запросил реванш');
   });
 
-  socket.on('player_left',()=>{
+  socket.on('player_left', () => {
     updateStatus('Игрок вышел из матча');
-    matchFinished=true;
-    currentMatchId=null;
-    matchLabel.innerText='—';
+    matchFinished = true;
+    currentMatchId = null;
+    matchLabel.innerText = '—';
     updateTurnBanner();
     updateSidePanelState();
   });
 
-  socket.on('purchase_result',data=>{
-    if(!data) return;
-    if(data.ok){
-      if(Array.isArray(data.ownedSkins)) ownedSkins=data.ownedSkins;
-      else if(data.skinId && !ownedSkins.includes(data.skinId)) ownedSkins.push(data.skinId);
-      localStorage.setItem('owned_skins',JSON.stringify(ownedSkins));
-      equippedSkin=data.skinId || equippedSkin;
-      localStorage.setItem('equipped_skin',equippedSkin);
+  socket.on('purchase_result', data => {
+    if (!data) return;
+    if (data.ok) {
+      if (Array.isArray(data.ownedSkins)) ownedSkins = data.ownedSkins;
+      else if (data.skinId && !ownedSkins.includes(data.skinId)) ownedSkins.push(data.skinId);
+      localStorage.setItem('owned_skins', JSON.stringify(ownedSkins));
+      equippedSkin = data.skinId || equippedSkin;
+      localStorage.setItem('equipped_skin', equippedSkin);
       updateStatus('Покупка успешна! Скин надет.');
       renderShopModalContent();
       renderAll();
-    }else{
+    } else {
       updateStatus('Ошибка покупки: ' + (data.error || 'unknown'));
     }
   });
 
-  socket.on('error',e=>logDbg('server error: ' + JSON.stringify(e)));
+  socket.on('error', e => logDbg('server error: ' + JSON.stringify(e)));
 }
 
 /* ====== матч кнопки ====== */

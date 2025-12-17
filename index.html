@@ -81,7 +81,7 @@
       position:relative;
     }
     .cell.occupied{color:white}
-    .cell.miss{background:var(--miss);color:#90a4ae}
+    .cell.miss{background:var(--miss);color:#transparent}
     .cell.hit{background:var(--hit);color:white}
     .cell.pending{background:var(--pending)}
     .cell.sunk{background:var(--sunk);color:white}
@@ -103,6 +103,9 @@
       width:32%;
       height:32%;
       border-radius:50%;
+      background:#90a4ae;
+    }
+    cell.miss.dot: :after{
       background:#90a4ae;
     }
     .cell.explosion {
@@ -145,13 +148,16 @@
       gap:8px;
       z-index:20;
     }
-    .footer .panel{
-      flex:1;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:10px;
-    }
+   .footer{
+  position:fixed;
+  left:10px;
+  right:10px;
+  bottom:calc(10px + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  display:flex;
+  gap:8px;
+  z-index:20;
+}
 
     .info{font-size:13px;color:#263238}
     .small{font-size:12px;color:#3b4752}
@@ -1209,8 +1215,7 @@ function initSocket() {
       if (cell) {
         cell.classList.remove('pending');
         if (d.result === 'miss') {
-          cell.classList.add('miss');
-          cell.textContent = '•';
+          cell.classList.add('miss','dot');
         } else if (d.result === 'hit') {
           cell.classList.remove('hit', 'miss', 'sunk');
           cell.innerHTML = '';
@@ -1243,8 +1248,7 @@ function initSocket() {
       const cell = myField.children[idx];
       if (cell) {
         if (d.result === 'miss') {
-          cell.classList.add('miss');
-          cell.textContent = '•';
+          cell.classList.add('miss','dot');
         } else if (d.result === 'hit') {
           cell.classList.add('hit');
           cell.textContent = '×';
